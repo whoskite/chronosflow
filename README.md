@@ -1,36 +1,87 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ChronoFlow
+
+A modern productivity tool for time blocking, task management, and daily planning with a beautiful UI.
+
+![ChronoFlow](https://i.imgur.com/placeholder.png)
+
+## Features
+
+- **Time Blocking**: Visualize your day with intuitive time blocks
+- **Task Management**: Create, track, and complete tasks with ease
+- **Notes & Ideas**: Capture thoughts and ideas throughout your day
+- **Daily Planning**: Plan your day with a structured approach
+- **Daily Shutdown**: End your day with reflection and preparation for tomorrow
+- **Beautiful UI**: Clean, modern interface with smooth animations
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
 
+- Node.js (v14 or higher)
+- npm or yarn
+
+### Installation
+
+1. Clone the repository
+```bash
+git clone https://github.com/yourusername/ChronoFlow.git
+cd ChronoFlow
+```
+
+2. Install dependencies
+```bash
+npm install
+# or
+yarn install
+```
+
+3. Start the development server
 ```bash
 npm run dev
 # or
 yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+4. Open your browser and navigate to `http://localhost:3000`
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Usage
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### Time Blocks
 
-## Learn More
+- Click on the time grid to create a new time block
+- Drag to resize or move time blocks
+- Click on a time block to edit its details
+- Add tasks and notes to time blocks
 
-To learn more about Next.js, take a look at the following resources:
+### Tasks
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- Create tasks with the "Add Item" button
+- Mark tasks as complete by checking the checkbox
+- Tasks can be standalone or associated with time blocks
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### Notes & Ideas
 
-## Deploy on Vercel
+- Capture notes and ideas throughout your day
+- Associate notes with specific time blocks
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### Daily Shutdown
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Use the shutdown feature to reflect on your day
+- Review completed tasks
+- Capture loose ends
+- Plan for tomorrow
+- Clear your mind with a daily reflection
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Acknowledgments
+
+- Built with Next.js and React
+- UI components from Shadcn UI
+- Date handling with date-fns

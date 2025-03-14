@@ -1,0 +1,2287 @@
+"use client";
+
+import React, { useState } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Separator } from '@/components/ui/separator';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Plus, X, Edit, Calendar as CalendarIcon, Clock, Save, Lightbulb, StickyNote, Trash2, ChevronDown, ChevronRight, Power, ChevronLeft } from 'lucide-react';
+import { useStore } from '@/lib/store/use-store';
+import { TimeBlock, Task } from '@/lib/store/use-store';
+import { format, addDays, subDays, isSameDay } from 'date-fns';
+
+// Define interfaces for time block tasks and notes
+interface TimeBlockTask {
+  id: string;
+  text: string;
+  completed: boolean;
+}
+
+interface TimeBlockNote {
+  id: string;
+  content: string;
+}
+
+export function DailyView() {
+  const [newTaskTitle, setNewTaskTitle] = useState('');
+  const [newNoteContent, setNewNoteContent] = useState('');
+  const [newIdeaContent, setNewIdeaContent] = useState('');
+  const [isAddingTask, setIsAddingTask] = useState(false);
+  const [isAddingNote, setIsAddingNote] = useState(false);
+  const [isAddingIdea, setIsAddingIdea] = useState(false);
+  const [selectedNote, setSelectedNote] = useState<string | null>(null);
+  const [isNoteDialogOpen, setIsNoteDialogOpen] = useState(false);
+  const [isEditingNote, setIsEditingNote] = useState(false);
+  const [editedNoteContent, setEditedNoteContent] = useState('');
+  const [isTaskDialogOpen, setIsTaskDialogOpen] = useState(false);
+  const [isAssignTimeBlockDialogOpen, setIsAssignTimeBlockDialogOpen] = useState(false);
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [editedTaskTitle, setEditedTaskTitle] = useState('');
+  const [selectedTimeBlockId, setSelectedTimeBlockId] = useState<string | null>(null);
+  const [newTimeBlockTitle, setNewTimeBlockTitle] = useState('');
+  const [newTimeBlockStartDate, setNewTimeBlockStartDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [newTimeBlockStartTime, setNewTimeBlockStartTime] = useState('09:00');
+  const [newTimeBlockEndDate, setNewTimeBlockEndDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [newTimeBlockEndTime, setNewTimeBlockEndTime] = useState('10:00');
+  const [newTimeBlockDescription, setNewTimeBlockDescription] = useState('');
+  const [isTimeBlockDialogOpen, setIsTimeBlockDialogOpen] = useState(false);
+  const [editingTimeBlockId, setEditingTimeBlockId] = useState<string | null>(null);
+  const [timeBlockTasks, setTimeBlockTasks] = useState<Record<string, TimeBlockTask[]>>({});
+  const [timeBlockNotes, setTimeBlockNotes] = useState<Record<string, TimeBlockNote[]>>({});
+  const [newTimeBlockTask, setNewTimeBlockTask] = useState('');
+  const [newTimeBlockNote, setNewTimeBlockNote] = useState('');
+  const [activeTimeBlockTab, setActiveTimeBlockTab] = useState<'details' | 'tasks' | 'notes'>('details');
+  const [viewingTimeBlockId, setViewingTimeBlockId] = useState<string | null>(null);
+  const [isTimeBlockDetailsOpen, setIsTimeBlockDetailsOpen] = useState(false);
+  const [pendingTimeBlockTasks, setPendingTimeBlockTasks] = useState<TimeBlockTask[]>([]);
+  const [newPendingTask, setNewPendingTask] = useState('');
+  const [isCompletedTasksVisible, setIsCompletedTasksVisible] = useState(true);
+  const [isShutdownDialogOpen, setIsShutdownDialogOpen] = useState(false);
+  const [shutdownReflection, setShutdownReflection] = useState('');
+  const [shutdownChecklist, setShutdownChecklist] = useState({
+    reviewedTasks: false,
+    capturedLooseEnds: false,
+    plannedTomorrow: false,
+    clearMind: false
+  });
+  // Add a state variable for the selected date
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+
+  const { 
+    tasks, 
+    notes, 
+    timeBlocks,
+    addTask, 
+    updateTask, 
+    addNote,
+    updateNote,
+    addTimeBlock,
+    updateTimeBlock,
+    deleteTimeBlock,
+    deleteTask,
+    deleteNote
+  } = useStore();
+
+  const handleAddTask = () => {
+    if (newTaskTitle.trim()) {
+      addTask({ title: newTaskTitle.trim(), completed: false });
+      setNewTaskTitle('');
+      setIsAddingTask(false);
+    }
+  };
+
+  const handleAddNote = () => {
+    if (newNoteContent.trim()) {
+      addNote({ content: newNoteContent.trim() });
+      setNewNoteContent('');
+      setIsAddingNote(false);
+    }
+  };
+
+  const handleAddIdea = () => {
+    if (newIdeaContent.trim()) {
+      addNote({ content: `💡 ${newIdeaContent.trim()}` });
+      setNewIdeaContent('');
+      setIsAddingIdea(false);
+    }
+  };
+
+  const handleToggleTask = (id: string, completed: boolean) => {
+    // Update the task in the main tasks list
+    updateTask(id, { completed });
+    
+    // Check if this task is from a time block
+    const task = tasks[id];
+    if (task && task.description && task.description.startsWith('From time block:')) {
+      // Extract the time block title from the description
+      const timeBlockTitle = task.description.replace('From time block: ', '');
+      
+      // Find the time block with this title
+      const timeBlockId = Object.keys(timeBlocks).find(id => 
+        timeBlocks[id].title === timeBlockTitle
+      );
+      
+      if (timeBlockId) {
+        // Find the corresponding task in the time block tasks
+        const timeBlockTaskId = timeBlockTasks[timeBlockId]?.find(t => 
+          t.text === task.title
+        )?.id;
+        
+        // If found, update its completion status
+        if (timeBlockTaskId) {
+          setTimeBlockTasks(prev => ({
+            ...prev,
+            [timeBlockId]: prev[timeBlockId].map(t => 
+              t.id === timeBlockTaskId ? { ...t, completed } : t
+            )
+          }));
+        }
+      }
+    }
+  };
+
+  const handleNoteClick = (noteId: string) => {
+    setSelectedNote(noteId);
+    setIsNoteDialogOpen(true);
+    setIsEditingNote(false);
+  };
+
+  const handleCloseNoteDialog = () => {
+    setSelectedNote(null);
+    setIsNoteDialogOpen(false);
+    setIsEditingNote(false);
+    setEditedNoteContent('');
+  };
+
+  const handleEditNote = (noteId: string) => {
+    setSelectedNote(noteId);
+    setEditedNoteContent(notes[noteId].content);
+    setIsEditingNote(true);
+    setIsNoteDialogOpen(true);
+  };
+
+  const handleSaveNote = () => {
+    if (selectedNote && editedNoteContent.trim()) {
+      updateNote(selectedNote, { content: editedNoteContent.trim() });
+      setIsEditingNote(false);
+    }
+  };
+
+  const handleDeleteNote = () => {
+    if (selectedNote) {
+      deleteNote(selectedNote);
+      setIsNoteDialogOpen(false);
+      setSelectedNote(null);
+    }
+  };
+
+  const findTimeBlocksWithNote = (noteId: string) => {
+    if (!noteId || !notes[noteId]) return [];
+    
+    const noteContent = notes[noteId].content;
+    const associatedTimeBlocks: Array<{id: string, timeBlock: TimeBlock}> = [];
+    
+    // Check all time blocks to see if they have this note
+    Object.keys(timeBlockNotes).forEach(timeBlockId => {
+      if (timeBlocks[timeBlockId] && timeBlockNotes[timeBlockId]) {
+        const hasNote = timeBlockNotes[timeBlockId].some(note => 
+          note.content === noteContent
+        );
+        
+        if (hasNote) {
+          associatedTimeBlocks.push({
+            id: timeBlockId,
+            timeBlock: timeBlocks[timeBlockId]
+          });
+        }
+      }
+    });
+    
+    // Sort by start time
+    return associatedTimeBlocks.sort((a, b) => 
+      new Date(a.timeBlock.startTime).getTime() - new Date(b.timeBlock.startTime).getTime()
+    );
+  };
+  
+  const handleViewTimeBlockFromNote = (timeBlockId: string) => {
+    handleCloseNoteDialog();
+    handleViewTimeBlock(timeBlockId);
+  };
+
+  // Add functions to navigate between dates
+  const goToPreviousDay = () => {
+    setSelectedDate(prevDate => subDays(prevDate, 1));
+  };
+
+  const goToNextDay = () => {
+    setSelectedDate(prevDate => addDays(prevDate, 1));
+  };
+
+  const goToToday = () => {
+    setSelectedDate(new Date());
+  };
+
+  const handleAddTimeBlock = () => {
+    if (newTimeBlockTitle.trim()) {
+      // Parse the date strings and combine with the selected date
+      const startDateTime = new Date(`${newTimeBlockStartDate}T${newTimeBlockStartTime}`);
+      const endDateTime = new Date(`${newTimeBlockEndDate}T${newTimeBlockEndTime}`);
+      
+      // Only add if end time is after start time or if end time is midnight (00:00)
+      // Special case for midnight: if end time is 00:00, it should be interpreted as end of day
+      const isEndTimeMidnight = newTimeBlockEndTime === '00:00';
+      
+      if (endDateTime > startDateTime || isEndTimeMidnight) {
+        let timeBlockId: string = editingTimeBlockId || '';
+        
+        // If end time is midnight, set it to 23:59:59 of the same day to avoid date change
+        let adjustedEndDateTime = endDateTime;
+        if (isEndTimeMidnight) {
+          adjustedEndDateTime = new Date(endDateTime);
+          adjustedEndDateTime.setHours(23, 59, 59);
+        }
+        
+        if (editingTimeBlockId) {
+          // Update existing time block
+          updateTimeBlock(editingTimeBlockId, {
+            title: newTimeBlockTitle.trim(),
+            startTime: startDateTime,
+            endTime: isEndTimeMidnight ? adjustedEndDateTime : endDateTime,
+            description: newTimeBlockDescription.trim() || undefined
+          });
+        } else {
+          // Add new time block
+          timeBlockId = addTimeBlock({
+            title: newTimeBlockTitle.trim(),
+            startTime: startDateTime,
+            endTime: isEndTimeMidnight ? adjustedEndDateTime : endDateTime,
+            description: newTimeBlockDescription.trim() || undefined,
+            status: 'planned'
+          });
+          
+          // Initialize empty tasks and notes arrays for the new time block
+          setTimeBlockTasks(prev => ({
+            ...prev,
+            [timeBlockId]: []
+          }));
+          
+          setTimeBlockNotes(prev => ({
+            ...prev,
+            [timeBlockId]: []
+          }));
+          
+          // Add any pending tasks to the time block
+          if (pendingTimeBlockTasks.length > 0) {
+            setTimeBlockTasks(prev => ({
+              ...prev,
+              [timeBlockId]: pendingTimeBlockTasks
+            }));
+            
+            // Also add tasks to Today's Tasks
+            pendingTimeBlockTasks.forEach(task => {
+              addTask({ 
+                title: task.text, 
+                completed: task.completed,
+                description: `From time block: ${newTimeBlockTitle.trim()}`
+              });
+            });
+          }
+        }
+        
+        // Reset form
+        resetTimeBlockForm();
+      }
+    }
+  };
+
+  const resetTimeBlockForm = () => {
+    setNewTimeBlockTitle('');
+    setNewTimeBlockDescription('');
+    setEditingTimeBlockId(null);
+    setIsTimeBlockDialogOpen(false);
+    setPendingTimeBlockTasks([]);
+    setNewPendingTask('');
+  };
+  
+  const handleAddPendingTask = () => {
+    if (newPendingTask.trim()) {
+      const newTask: TimeBlockTask = {
+        id: Math.random().toString(36).substring(2, 9),
+        text: newPendingTask.trim(),
+        completed: false
+      };
+      
+      setPendingTimeBlockTasks(prev => [...prev, newTask]);
+      setNewPendingTask('');
+    }
+  };
+  
+  const handleRemovePendingTask = (taskId: string) => {
+    setPendingTimeBlockTasks(prev => prev.filter(task => task.id !== taskId));
+  };
+
+  const handleAddTimeBlockTask = (timeBlockId: string) => {
+    if (newTimeBlockTask.trim()) {
+      const newTask: TimeBlockTask = {
+        id: Math.random().toString(36).substring(2, 9),
+        text: newTimeBlockTask.trim(),
+        completed: false
+      };
+      
+      setTimeBlockTasks(prev => ({
+        ...prev,
+        [timeBlockId]: [...(prev[timeBlockId] || []), newTask]
+      }));
+      
+      // Also add to Today's Tasks
+      const timeBlock = timeBlocks[timeBlockId];
+      addTask({ 
+        title: newTimeBlockTask.trim(), 
+        completed: false,
+        description: timeBlock ? `From time block: ${timeBlock.title}` : undefined
+      });
+      
+      setNewTimeBlockTask('');
+    }
+  };
+  
+  const handleToggleTimeBlockTask = (timeBlockId: string, taskId: string) => {
+    // Find the task to toggle
+    const taskToToggle = timeBlockTasks[timeBlockId]?.find(task => task.id === taskId);
+    if (!taskToToggle) return;
+    
+    // Toggle the task in the time block tasks
+    setTimeBlockTasks(prev => ({
+      ...prev,
+      [timeBlockId]: prev[timeBlockId].map(task => 
+        task.id === taskId ? { ...task, completed: !task.completed } : task
+      )
+    }));
+    
+    // Find the corresponding task in the main tasks list by matching the text and time block title
+    const timeBlock = timeBlocks[timeBlockId];
+    if (!timeBlock) return;
+    
+    const matchingMainTask = Object.values(tasks).find(task => 
+      task.title === taskToToggle.text && 
+      task.description === `From time block: ${timeBlock.title}`
+    );
+    
+    // If found, update its completion status
+    if (matchingMainTask) {
+      updateTask(matchingMainTask.id, { completed: !taskToToggle.completed });
+    }
+  };
+  
+  const handleDeleteTimeBlockTask = (timeBlockId: string, taskId: string) => {
+    // Find the task to delete
+    const taskToDelete = timeBlockTasks[timeBlockId]?.find(task => task.id === taskId);
+    if (!taskToDelete) return;
+    
+    // Delete the task from the time block tasks
+    setTimeBlockTasks(prev => ({
+      ...prev,
+      [timeBlockId]: prev[timeBlockId].filter(task => task.id !== taskId)
+    }));
+    
+    // Find the corresponding task in the main tasks list by matching the text and time block title
+    const timeBlock = timeBlocks[timeBlockId];
+    if (!timeBlock) return;
+    
+    const matchingMainTask = Object.values(tasks).find(task => 
+      task.title === taskToDelete.text && 
+      task.description === `From time block: ${timeBlock.title}`
+    );
+    
+    // If found, delete it
+    if (matchingMainTask) {
+      deleteTask(matchingMainTask.id);
+    }
+  };
+  
+  const handleAddTimeBlockNote = (timeBlockId: string) => {
+    if (newTimeBlockNote.trim()) {
+      const newNote: TimeBlockNote = {
+        id: Math.random().toString(36).substring(2, 9),
+        content: newTimeBlockNote.trim()
+      };
+      
+      setTimeBlockNotes(prev => ({
+        ...prev,
+        [timeBlockId]: [...(prev[timeBlockId] || []), newNote]
+      }));
+      
+      // Also add to main notes section
+      addNote({ content: newTimeBlockNote.trim() });
+      
+      setNewTimeBlockNote('');
+    }
+  };
+  
+  const handleDeleteTimeBlockNote = (timeBlockId: string, noteId: string) => {
+    setTimeBlockNotes(prev => ({
+      ...prev,
+      [timeBlockId]: prev[timeBlockId].filter(note => note.id !== noteId)
+    }));
+    
+    // Note: We don't delete from main notes as they might be used elsewhere
+  };
+  
+  const handleAssignNoteToTimeBlock = (timeBlockId: string, noteId: string) => {
+    // Check if the note is already assigned to this time block
+    const isAlreadyAssigned = timeBlockNotes[timeBlockId]?.some(note => 
+      note.content === notes[noteId].content
+    );
+    
+    if (!isAlreadyAssigned) {
+      const newNote: TimeBlockNote = {
+        id: Math.random().toString(36).substring(2, 9),
+        content: notes[noteId].content
+      };
+      
+      setTimeBlockNotes(prev => ({
+        ...prev,
+        [timeBlockId]: [...(prev[timeBlockId] || []), newNote]
+      }));
+    } else {
+      // Remove the note from the time block if it's already assigned
+      setTimeBlockNotes(prev => ({
+        ...prev,
+        [timeBlockId]: prev[timeBlockId].filter(note => 
+          note.content !== notes[noteId].content
+        )
+      }));
+    }
+  };
+  
+  const handleViewTimeBlock = (timeBlockId: string) => {
+    const timeBlock = timeBlocks[timeBlockId];
+    if (timeBlock) {
+      // Pre-populate the form fields with the time block data
+      const startTime = new Date(timeBlock.startTime);
+      const endTime = new Date(timeBlock.endTime);
+      
+      setNewTimeBlockTitle(timeBlock.title);
+      setNewTimeBlockDescription(timeBlock.description || '');
+      setNewTimeBlockStartDate(format(startTime, 'yyyy-MM-dd'));
+      setNewTimeBlockStartTime(format(startTime, 'HH:mm'));
+      setNewTimeBlockEndDate(format(endTime, 'yyyy-MM-dd'));
+      setNewTimeBlockEndTime(format(endTime, 'HH:mm'));
+    }
+    
+    setViewingTimeBlockId(timeBlockId);
+    setActiveTimeBlockTab('details');
+    setIsTimeBlockDetailsOpen(true);
+    
+    // Initialize tasks and notes arrays if they don't exist
+    if (!timeBlockTasks[timeBlockId]) {
+      setTimeBlockTasks(prev => ({
+        ...prev,
+        [timeBlockId]: []
+      }));
+    }
+    
+    if (!timeBlockNotes[timeBlockId]) {
+      setTimeBlockNotes(prev => ({
+        ...prev,
+        [timeBlockId]: []
+      }));
+    }
+  };
+
+  const handleSaveTimeBlockDetails = () => {
+    if (viewingTimeBlockId && newTimeBlockTitle.trim()) {
+      const startDateTime = new Date(`${newTimeBlockStartDate}T${newTimeBlockStartTime}`);
+      const endDateTime = new Date(`${newTimeBlockEndDate}T${newTimeBlockEndTime}`);
+      
+      // Special case for midnight: if end time is 00:00, it should be interpreted as end of day
+      const isEndTimeMidnight = newTimeBlockEndTime === '00:00';
+      
+      // Only update if end time is after start time or if end time is midnight
+      if (endDateTime > startDateTime || isEndTimeMidnight) {
+        // If end time is midnight, set it to 23:59:59 of the same day to avoid date change
+        let adjustedEndDateTime = endDateTime;
+        if (isEndTimeMidnight) {
+          adjustedEndDateTime = new Date(endDateTime);
+          adjustedEndDateTime.setHours(23, 59, 59);
+        }
+        
+        const updates: Partial<TimeBlock> = {
+          title: newTimeBlockTitle.trim(),
+          startTime: startDateTime,
+          endTime: isEndTimeMidnight ? adjustedEndDateTime : endDateTime,
+          description: newTimeBlockDescription.trim() || undefined
+        };
+        
+        updateTimeBlock(viewingTimeBlockId, updates);
+      }
+    }
+  };
+
+  // Handle deleting a time block and all its associated tasks
+  const handleDeleteTimeBlock = (timeBlockId: string) => {
+    // Get the time block before deleting it
+    const timeBlock = timeBlocks[timeBlockId];
+    
+    if (timeBlock) {
+      // Find all tasks in the main tasks list that are associated with this time block
+      const associatedTasks = Object.values(tasks).filter(task => 
+        task.description === `From time block: ${timeBlock.title}`
+      );
+      
+      // Delete each associated task from the main tasks list
+      associatedTasks.forEach(task => {
+        deleteTask(task.id);
+      });
+      
+      // Delete the time block
+      deleteTimeBlock(timeBlockId);
+      
+      // Clean up the time block tasks and notes state
+      setTimeBlockTasks(prev => {
+        const newState = { ...prev };
+        delete newState[timeBlockId];
+        return newState;
+      });
+      
+      setTimeBlockNotes(prev => {
+        const newState = { ...prev };
+        delete newState[timeBlockId];
+        return newState;
+      });
+      
+      // Close the time block details dialog if it's open
+      if (viewingTimeBlockId === timeBlockId) {
+        setIsTimeBlockDetailsOpen(false);
+      }
+    }
+  };
+
+  const tasksList = Object.values(tasks)
+    .filter(task => !task.completed)
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  const completedTasksList = Object.values(tasks)
+    .filter(task => task.completed)
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  const notesList = Object.values(notes)
+    .filter(note => !note.content.startsWith('💡'))
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+
+  const ideasList = Object.values(notes)
+    .filter(note => note.content.startsWith('💡'))
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+
+  // Get the selected note if one is selected
+  const currentNote = selectedNote ? notes[selectedNote] : null;
+
+  // Filter time blocks for the selected date
+  const timeBlocksForSelectedDate = Object.values(timeBlocks)
+    .filter(timeBlock => {
+      const blockDate = new Date(timeBlock.startTime);
+      return isSameDay(blockDate, selectedDate);
+    })
+    .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+
+  // Format the selected date for display
+  const formattedDate = format(selectedDate, 'EEEE, MMMM d, yyyy');
+
+  const handleEditTask = (taskId: string) => {
+    const task = tasks[taskId];
+    if (task) {
+      setEditingTaskId(taskId);
+      setEditedTaskTitle(task.title);
+      
+      // Check if task is associated with a time block
+      if (task.description && task.description.startsWith('From time block:')) {
+        const timeBlockTitle = task.description.replace('From time block: ', '');
+        const timeBlockId = Object.keys(timeBlocks).find(id => 
+          timeBlocks[id].title === timeBlockTitle
+        );
+        
+        if (timeBlockId) {
+          setSelectedTimeBlockId(timeBlockId);
+        } else {
+          setSelectedTimeBlockId(null);
+        }
+      } else {
+        setSelectedTimeBlockId(null);
+      }
+      
+      setIsTaskDialogOpen(true);
+    }
+  };
+
+  const handleSaveEditedTask = () => {
+    if (editingTaskId && editedTaskTitle.trim()) {
+      const task = tasks[editingTaskId];
+      const updates: Partial<Task> = {
+        title: editedTaskTitle.trim()
+      };
+      
+      // Handle time block association
+      if (selectedTimeBlockId) {
+        const timeBlock = timeBlocks[selectedTimeBlockId];
+        updates.description = `From time block: ${timeBlock.title}`;
+        
+        // Check if this task already exists in the time block tasks
+        const existingTimeBlockTask = timeBlockTasks[selectedTimeBlockId]?.find(t => 
+          t.text === task.title
+        );
+        
+        if (!existingTimeBlockTask) {
+          // Add task to the time block
+          const newTimeBlockTask: TimeBlockTask = {
+            id: Math.random().toString(36).substring(2, 9),
+            text: editedTaskTitle.trim(),
+            completed: task.completed
+          };
+          
+          setTimeBlockTasks(prev => ({
+            ...prev,
+            [selectedTimeBlockId]: [...(prev[selectedTimeBlockId] || []), newTimeBlockTask]
+          }));
+        } else {
+          // Update the existing time block task
+          setTimeBlockTasks(prev => ({
+            ...prev,
+            [selectedTimeBlockId]: prev[selectedTimeBlockId].map(t => 
+              t.text === task.title ? { ...t, text: editedTaskTitle.trim() } : t
+            )
+          }));
+        }
+        
+        // If the task was previously associated with a different time block, remove it
+        if (task.description && task.description.startsWith('From time block:')) {
+          const prevTimeBlockTitle = task.description.replace('From time block: ', '');
+          const prevTimeBlockId = Object.keys(timeBlocks).find(id => 
+            timeBlocks[id].title === prevTimeBlockTitle
+          );
+          
+          if (prevTimeBlockId && prevTimeBlockId !== selectedTimeBlockId) {
+            setTimeBlockTasks(prev => ({
+              ...prev,
+              [prevTimeBlockId]: prev[prevTimeBlockId]?.filter(t => t.text !== task.title) || []
+            }));
+          }
+        }
+      } else if (task.description && task.description.startsWith('From time block:')) {
+        // If the task was previously associated with a time block but now isn't, remove it
+        const prevTimeBlockTitle = task.description.replace('From time block: ', '');
+        const prevTimeBlockId = Object.keys(timeBlocks).find(id => 
+          timeBlocks[id].title === prevTimeBlockTitle
+        );
+        
+        if (prevTimeBlockId) {
+          setTimeBlockTasks(prev => ({
+            ...prev,
+            [prevTimeBlockId]: prev[prevTimeBlockId]?.filter(t => t.text !== task.title) || []
+          }));
+        }
+        
+        // Clear the description
+        updates.description = undefined;
+      }
+      
+      // Update the task
+      updateTask(editingTaskId, updates);
+      
+      // Reset state
+      setEditingTaskId(null);
+      setEditedTaskTitle('');
+      setSelectedTimeBlockId(null);
+      setIsTaskDialogOpen(false);
+    }
+  };
+
+  // Add a handler function for deleting tasks from the main task list
+  const handleDeleteTask = (taskId: string) => {
+    // Get the task before deleting it
+    const task = tasks[taskId];
+    
+    if (task) {
+      // Check if task is associated with a time block
+      if (task.description && task.description.startsWith('From time block:')) {
+        // Extract the time block title from the description
+        const timeBlockTitle = task.description.replace('From time block: ', '');
+        
+        // Find the time block with this title
+        const timeBlockId = Object.keys(timeBlocks).find(id => 
+          timeBlocks[id].title === timeBlockTitle
+        );
+        
+        if (timeBlockId) {
+          // Remove the task from the time block tasks
+          setTimeBlockTasks(prev => ({
+            ...prev,
+            [timeBlockId]: prev[timeBlockId]?.filter(t => t.text !== task.title) || []
+          }));
+        }
+      }
+      
+      // Delete the task from the main tasks list
+      deleteTask(taskId);
+    }
+  };
+
+  // Handle shutdown checklist item toggle
+  const handleShutdownChecklistToggle = (item: keyof typeof shutdownChecklist) => {
+    setShutdownChecklist(prev => ({
+      ...prev,
+      [item]: !prev[item]
+    }));
+  };
+
+  // Handle shutdown completion
+  const handleCompleteShutdown = () => {
+    // Save the shutdown reflection as a note
+    if (shutdownReflection.trim()) {
+      addNote({ 
+        content: `📝 Daily Shutdown Reflection (${format(selectedDate, 'MMM d, yyyy')}):\n\n${shutdownReflection.trim()}` 
+      });
+    }
+    
+    // Reset the shutdown dialog state
+    setShutdownReflection('');
+    setShutdownChecklist({
+      reviewedTasks: false,
+      capturedLooseEnds: false,
+      plannedTomorrow: false,
+      clearMind: false
+    });
+    
+    // Close the dialog
+    setIsShutdownDialogOpen(false);
+  };
+
+  // Helper function to convert 12-hour time format to 24-hour format
+  const convert12To24Format = (time12h: string, isPM: boolean): string => {
+    const [hours, minutes] = time12h.split(':').map(Number);
+    
+    if (hours === 12) {
+      return isPM ? `12:${minutes.toString().padStart(2, '0')}` : `00:${minutes.toString().padStart(2, '0')}`;
+    }
+    
+    const hours24 = isPM ? hours + 12 : hours;
+    return `${hours24.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+  };
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-4">
+          <h2 className="text-3xl font-bold tracking-tight">{formattedDate}</h2>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="icon" onClick={goToPreviousDay}>
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button variant="outline" size="sm" onClick={goToToday}>
+              Today
+            </Button>
+            <Button variant="outline" size="icon" onClick={goToNextDay}>
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button 
+            variant="outline" 
+            className="flex items-center gap-2"
+            onClick={() => setIsShutdownDialogOpen(true)}
+          >
+            <Power className="h-4 w-4" />
+            <span>Shutdown</span>
+          </Button>
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="mr-2 h-4 w-4" />
+                Add Item
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Add New Item</DialogTitle>
+              </DialogHeader>
+              <div className="grid grid-cols-2 gap-4 py-4">
+                <Button 
+                  variant="outline" 
+                  className="flex flex-col h-24 items-center justify-center gap-2"
+                  onClick={() => {
+                    setIsAddingTask(true);
+                    setIsAddingNote(false);
+                    setIsAddingIdea(false);
+                  }}
+                >
+                  <Checkbox className="h-8 w-8" />
+                  <span>Task</span>
+                </Button>
+                <Button 
+                  variant="outline" 
+                  className="flex flex-col h-24 items-center justify-center gap-2"
+                  onClick={() => {
+                    setIsAddingTask(false);
+                    setIsAddingNote(true);
+                    setIsAddingIdea(false);
+                  }}
+                >
+                  <StickyNote className="h-8 w-8" />
+                  <span>Note</span>
+                </Button>
+                <Button 
+                  variant="outline" 
+                  className="flex flex-col h-24 items-center justify-center gap-2"
+                  onClick={() => {
+                    setIsAddingTask(false);
+                    setIsAddingNote(false);
+                    setIsAddingIdea(true);
+                  }}
+                >
+                  <Lightbulb className="h-8 w-8" />
+                  <span>Idea</span>
+                </Button>
+                <Button 
+                  variant="outline" 
+                  className="flex flex-col h-24 items-center justify-center gap-2"
+                >
+                  <Clock className="h-8 w-8" />
+                  <span>Time Block</span>
+                </Button>
+              </div>
+              {isAddingTask && (
+                <div className="space-y-4">
+                  <Input
+                    placeholder="Task title"
+                    value={newTaskTitle}
+                    onChange={(e) => setNewTaskTitle(e.target.value)}
+                  />
+                  <div className="flex justify-end">
+                    <Button onClick={handleAddTask}>Add Task</Button>
+                  </div>
+                </div>
+              )}
+              {isAddingNote && (
+                <div className="space-y-4">
+                  <Textarea
+                    placeholder="Note content"
+                    className="min-h-[150px]"
+                    value={newNoteContent}
+                    onChange={(e) => setNewNoteContent(e.target.value)}
+                  />
+                  <div className="flex justify-end">
+                    <Button onClick={handleAddNote}>Add Note</Button>
+                  </div>
+                </div>
+              )}
+              {isAddingIdea && (
+                <div className="space-y-4">
+                  <Textarea
+                    placeholder="Your brilliant idea..."
+                    className="min-h-[150px]"
+                    value={newIdeaContent}
+                    onChange={(e) => setNewIdeaContent(e.target.value)}
+                  />
+                  <div className="flex justify-end">
+                    <Button onClick={handleAddIdea}>Add Idea</Button>
+                  </div>
+                </div>
+              )}
+            </DialogContent>
+          </Dialog>
+        </div>
+      </div>
+
+      <div className="flex flex-1 gap-6 h-full">
+        {/* Tasks and Ideas Column */}
+        <div className="w-2/3 flex flex-col gap-6">
+          {/* Tasks Section */}
+          <Card>
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg">Today&apos;s Tasks</CardTitle>
+                <Button variant="ghost" size="sm" onClick={() => setIsAddingTask(!isAddingTask)}>
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {isAddingTask && (
+                <div className="flex items-center gap-2 mb-2">
+                  <Input
+                    placeholder="New task"
+                    value={newTaskTitle}
+                    onChange={(e) => setNewTaskTitle(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleAddTask()}
+                  />
+                  <Button size="icon" variant="ghost" onClick={() => setIsAddingTask(false)}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                  <Button size="icon" onClick={handleAddTask}>
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
+              {tasksList.length === 0 && completedTasksList.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No tasks yet. Add one to get started.</p>
+              ) : (
+                <div className="space-y-4">
+                  {tasksList.length > 0 && (
+                    <div className="space-y-2">
+                      <h3 className="text-sm font-medium">To Do</h3>
+                      {tasksList.map((task) => (
+                        <div key={task.id} className="flex items-start gap-2">
+                          <Checkbox
+                            id={`task-${task.id}`}
+                            checked={task.completed}
+                            onCheckedChange={(checked) => 
+                              handleToggleTask(task.id, checked as boolean)
+                            }
+                          />
+                          <div className="flex-1">
+                            <label
+                              htmlFor={`task-${task.id}`}
+                              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                            >
+                              {task.title}
+                            </label>
+                            {task.description && (
+                              <p className="text-xs text-muted-foreground mt-1">{task.description}</p>
+                            )}
+                          </div>
+                          <div className="flex gap-1">
+                            <Button variant="ghost" size="icon" onClick={() => handleEditTask(task.id)}>
+                              <Edit className="h-3 w-3" />
+                            </Button>
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              className="text-destructive hover:text-destructive/90"
+                              onClick={() => handleDeleteTask(task.id)}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  
+                  {completedTasksList.length > 0 && (
+                    <div className="space-y-2">
+                      <div 
+                        className="flex items-center justify-between cursor-pointer group"
+                        onClick={() => setIsCompletedTasksVisible(!isCompletedTasksVisible)}
+                      >
+                        <h3 className="text-sm font-medium flex items-center gap-1.5">
+                          {isCompletedTasksVisible ? 
+                            <ChevronDown className="h-4 w-4 transition-transform duration-200" /> : 
+                            <ChevronRight className="h-4 w-4 transition-transform duration-200" />
+                          }
+                          <span>Completed</span>
+                          <span className="text-xs text-muted-foreground ml-1">({completedTasksList.length})</span>
+                        </h3>
+                        <div className="text-xs text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
+                          {isCompletedTasksVisible ? "Click to collapse" : "Click to expand"}
+                        </div>
+                      </div>
+                      
+                      <div 
+                        className={`space-y-1 overflow-hidden transition-all duration-300 ease-in-out ${
+                          isCompletedTasksVisible ? 'max-h-[500px] opacity-100' : 'max-h-0 opacity-0'
+                        }`}
+                      >
+                        {completedTasksList.map((task) => (
+                          <div key={task.id} className="flex items-start gap-2">
+                            <Checkbox
+                              id={`task-${task.id}`}
+                              checked={task.completed}
+                              onCheckedChange={(checked) => 
+                                handleToggleTask(task.id, checked as boolean)
+                              }
+                            />
+                            <div className="flex-1">
+                              <label
+                                htmlFor={`task-${task.id}`}
+                                className="text-sm font-medium leading-none line-through text-muted-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                              >
+                                {task.title}
+                              </label>
+                              {task.description && (
+                                <p className="text-xs text-muted-foreground mt-1">{task.description}</p>
+                              )}
+                            </div>
+                            <div className="flex gap-1">
+                              <Button variant="ghost" size="icon" onClick={() => handleEditTask(task.id)}>
+                                <Edit className="h-3 w-3" />
+                              </Button>
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className="text-destructive hover:text-destructive/90"
+                                onClick={() => handleDeleteTask(task.id)}
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Ideas Section */}
+          <Card>
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg">Ideas & Notes</CardTitle>
+                <div className="flex gap-1">
+                  <Button variant="ghost" size="sm" onClick={() => setIsAddingIdea(!isAddingIdea)}>
+                    <Lightbulb className="h-4 w-4" />
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => setIsAddingNote(!isAddingNote)}>
+                    <StickyNote className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {isAddingIdea && (
+                <div className="space-y-2 mb-2">
+                  <Textarea
+                    placeholder="New idea"
+                    value={newIdeaContent}
+                    onChange={(e) => setNewIdeaContent(e.target.value)}
+                    className="min-h-[100px]"
+                  />
+                  <div className="flex justify-end gap-2">
+                    <Button size="sm" variant="ghost" onClick={() => setIsAddingIdea(false)}>
+                      Cancel
+                    </Button>
+                    <Button size="sm" onClick={handleAddIdea}>
+                      Add
+                    </Button>
+                  </div>
+                </div>
+              )}
+              {isAddingNote && (
+                <div className="space-y-2 mb-2">
+                  <Textarea
+                    placeholder="New note"
+                    value={newNoteContent}
+                    onChange={(e) => setNewNoteContent(e.target.value)}
+                    className="min-h-[100px]"
+                  />
+                  <div className="flex justify-end gap-2">
+                    <Button size="sm" variant="ghost" onClick={() => setIsAddingNote(false)}>
+                      Cancel
+                    </Button>
+                    <Button size="sm" onClick={handleAddNote}>
+                      Add
+                    </Button>
+                  </div>
+                </div>
+              )}
+              {ideasList.length === 0 && notesList.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No ideas or notes yet. Add one to get started.</p>
+              ) : (
+                <div className="space-y-4">
+                  {ideasList.length > 0 && (
+                    <div className="space-y-3">
+                      <h3 className="text-sm font-medium flex items-center gap-1">
+                        <Lightbulb className="h-3 w-3" />
+                        Ideas
+                      </h3>
+                      {ideasList.map((idea) => (
+                        <div key={idea.id} className="space-y-1">
+                          <div className="flex items-start justify-between">
+                            <p 
+                              className="text-sm whitespace-pre-wrap cursor-pointer hover:text-blue-500 transition-colors"
+                              onClick={() => handleNoteClick(idea.id)}
+                            >
+                              {idea.content.replace('💡 ', '')}
+                            </p>
+                            <Button variant="ghost" size="icon" onClick={() => handleEditNote(idea.id)}>
+                              <Edit className="h-3 w-3" />
+                            </Button>
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            {format(new Date(idea.updatedAt), 'MMM d, h:mm a')}
+                          </p>
+                          <Separator className="my-1" />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  
+                  {notesList.length > 0 && (
+                    <div className="space-y-3">
+                      <h3 className="text-sm font-medium flex items-center gap-1">
+                        <StickyNote className="h-3 w-3" />
+                        Notes
+                      </h3>
+                      {notesList.map((note) => (
+                        <div key={note.id} className="space-y-1">
+                          <div className="flex items-start justify-between">
+                            <p 
+                              className="text-sm whitespace-pre-wrap cursor-pointer hover:text-blue-500 transition-colors"
+                              onClick={() => handleNoteClick(note.id)}
+                            >
+                              {note.content}
+                            </p>
+                            <Button variant="ghost" size="icon" onClick={() => handleEditNote(note.id)}>
+                              <Edit className="h-3 w-3" />
+                            </Button>
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            {format(new Date(note.updatedAt), 'MMM d, h:mm a')}
+                          </p>
+                          <Separator className="my-1" />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Time Blocks Column */}
+        <div className="w-1/3 flex flex-col">
+          <Card className="flex-1">
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg">Time Blocks</CardTitle>
+                <Dialog open={isTimeBlockDialogOpen} onOpenChange={setIsTimeBlockDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button variant="ghost" size="sm" onClick={() => {
+                      // Use the selected date instead of current date
+                      const now = new Date(selectedDate);
+                      
+                      // Round up to the nearest 30-minute interval
+                      const minutes = now.getMinutes();
+                      const roundedMinutes = minutes < 30 ? 30 : 0;
+                      const hoursAdjustment = minutes < 30 ? 0 : 1;
+                      
+                      // Create a new date with rounded minutes
+                      const roundedDate = new Date(now);
+                      roundedDate.setMinutes(roundedMinutes);
+                      roundedDate.setHours(now.getHours() + hoursAdjustment);
+                      roundedDate.setSeconds(0);
+                      roundedDate.setMilliseconds(0);
+                      
+                      // Calculate end time (1 hour after start time)
+                      const endDate = new Date(roundedDate);
+                      endDate.setHours(roundedDate.getHours() + 1);
+                      
+                      // Format times for the form
+                      const formattedDate = format(roundedDate, 'yyyy-MM-dd');
+                      const formattedStartTime = format(roundedDate, 'HH:mm');
+                      const formattedEndTime = format(endDate, 'HH:mm');
+                      
+                      setEditingTimeBlockId(null);
+                      setNewTimeBlockTitle('');
+                      setNewTimeBlockStartDate(formattedDate);
+                      setNewTimeBlockStartTime(formattedStartTime);
+                      setNewTimeBlockEndDate(formattedDate);
+                      setNewTimeBlockEndTime(formattedEndTime);
+                      setNewTimeBlockDescription('');
+                    }}>
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent onInteractOutside={() => resetTimeBlockForm()}>
+                    <DialogHeader>
+                      <DialogTitle>{editingTimeBlockId ? 'Edit Time Block' : 'Add Time Block'}</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4 pt-4">
+                      <div className="space-y-2">
+                        <Input 
+                          placeholder="Time block title" 
+                          value={newTimeBlockTitle}
+                          onChange={(e) => setNewTimeBlockTitle(e.target.value)}
+                        />
+                        <div className="space-y-1">
+                          <label className="text-sm font-medium">Time</label>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm text-muted-foreground">Start</span>
+                              </div>
+                              <div className="relative">
+                                <Input 
+                                  type="date" 
+                                  value={newTimeBlockStartDate}
+                                  onChange={(e) => setNewTimeBlockStartDate(e.target.value)}
+                                  className="text-sm pr-8"
+                                />
+                                <CalendarIcon className="h-4 w-4 absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                              </div>
+                              <div className="relative">
+                                <Input 
+                                  type="time" 
+                                  value={newTimeBlockStartTime}
+                                  onChange={(e) => setNewTimeBlockStartTime(e.target.value)}
+                                  className="text-sm pr-8"
+                                />
+                                <Clock className="h-4 w-4 absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                              </div>
+                            </div>
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm text-muted-foreground">End</span>
+                              </div>
+                              <div className="relative">
+                                <Input 
+                                  type="date" 
+                                  value={newTimeBlockEndDate}
+                                  onChange={(e) => setNewTimeBlockEndDate(e.target.value)}
+                                  className="text-sm pr-8"
+                                />
+                                <CalendarIcon className="h-4 w-4 absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                              </div>
+                              <div className="relative">
+                                <Input 
+                                  type="time" 
+                                  value={newTimeBlockEndTime}
+                                  onChange={(e) => setNewTimeBlockEndTime(e.target.value)}
+                                  className="text-sm pr-8"
+                                />
+                                <Clock className="h-4 w-4 absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                              </div>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                For midnight (12:00 AM), enter 00:00
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-sm font-medium">Description (optional)</label>
+                          <Textarea 
+                            placeholder="Add details about this time block" 
+                            value={newTimeBlockDescription}
+                            onChange={(e) => setNewTimeBlockDescription(e.target.value)}
+                          />
+                        </div>
+                        
+                        {/* Tasks section */}
+                        <div className="space-y-2 pt-2">
+                          <label className="text-sm font-medium">Tasks (optional)</label>
+                          <div className="flex items-center gap-2">
+                            <Input
+                              placeholder="Add a task for this time block..."
+                              value={newPendingTask}
+                              onChange={(e) => setNewPendingTask(e.target.value)}
+                              onKeyDown={(e) => e.key === 'Enter' && handleAddPendingTask()}
+                              className="flex-1"
+                            />
+                            <Button 
+                              size="sm"
+                              onClick={handleAddPendingTask}
+                            >
+                              Add
+                            </Button>
+                          </div>
+                          
+                          {pendingTimeBlockTasks.length > 0 && (
+                            <div className="mt-2 space-y-2 max-h-[150px] overflow-y-auto border rounded-md p-2">
+                              {pendingTimeBlockTasks.map(task => (
+                                <div key={task.id} className="flex items-center justify-between gap-2 py-1 px-2 bg-muted/30 rounded-sm group">
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-2 h-2 rounded-full bg-primary"></div>
+                                    <p className="text-sm">{task.text}</p>
+                                  </div>
+                                  <Button 
+                                    variant="ghost" 
+                                    size="icon"
+                                    className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                                    onClick={() => handleRemovePendingTask(task.id)}
+                                  >
+                                    <X className="h-3 w-3" />
+                                  </Button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          
+                          {pendingTimeBlockTasks.length > 0 && (
+                            <p className="text-xs text-muted-foreground">
+                              These tasks will be added to the time block and will also appear in Today&apos;s Tasks.
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex justify-end">
+                        <Button onClick={handleAddTimeBlock}>
+                          {editingTimeBlockId ? 'Update Time Block' : 'Add Time Block'}
+                        </Button>
+                      </div>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {timeBlocksForSelectedDate.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No time blocks for this day. Add one to get started.</p>
+              ) : (
+                <div className="space-y-3">
+                  {/* Time schedule with tasks */}
+                  <div className="relative">
+                    {/* Time markers */}
+                    <div className="absolute left-0 top-0 bottom-0 w-16 flex flex-col justify-between text-xs text-muted-foreground">
+                      {Array.from({ length: 36 }).map((_, i) => {
+                        const isHalfHour = i % 2 !== 0;
+                        const hour = Math.floor(i / 2) + 6;
+                        const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
+                        const amPm = hour >= 12 && hour < 24 ? 'PM' : 'AM';
+                        const timeLabel = isHalfHour ? 
+                          '' : 
+                          `${displayHour} ${amPm}`; // Ensure consistent spacing between hour and AM/PM
+                        
+                        return (
+                          <div 
+                            key={i} 
+                            className={`flex items-center justify-end pr-2 ${isHalfHour ? 'h-5' : 'h-5 font-medium'}`}
+                          >
+                            {timeLabel}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    
+                    {/* Time blocks */}
+                    <div className="ml-16 border-l pl-2 relative" style={{ height: '900px' }}>
+                      {/* Hour and half-hour grid lines */}
+                      {Array.from({ length: 36 }).map((_, i) => {
+                        const isHalfHour = i % 2 !== 0;
+                        return (
+                          <div 
+                            key={i} 
+                            className={`absolute left-0 right-0 border-t ${isHalfHour ? 'border-gray-100/50 border-dashed' : 'border-gray-100'}`} 
+                            style={{ top: `${(i / 35) * 100}%` }}
+                          />
+                        );
+                      })}
+                      
+                      {/* Empty time slots for clicking to add new time blocks */}
+                      {Array.from({ length: 36 }).map((_, i) => {
+                        const hour = Math.floor(i / 2) + 6;
+                        const minutes = (i % 2) * 30;
+                        const top = (i / 35) * 100;
+                        const height = (1 / 35) * 100;
+                        
+                        return (
+                          <div
+                            key={`slot-${i}`}
+                            className="absolute left-0 right-0 cursor-pointer hover:bg-gray-100/30 transition-colors"
+                            style={{ 
+                              top: `${top}%`, 
+                              height: `${height}%`,
+                              zIndex: 5 
+                            }}
+                            onClick={() => {
+                              // Get current date
+                              const currentDate = new Date();
+                              
+                              // Create a date object for the clicked time slot
+                              const slotDate = new Date(currentDate);
+                              slotDate.setHours(hour);
+                              slotDate.setMinutes(minutes);
+                              slotDate.setSeconds(0);
+                              slotDate.setMilliseconds(0);
+                              
+                              // Round up to the nearest 30-minute interval if needed
+                              const slotMinutes = slotDate.getMinutes();
+                              if (slotMinutes > 0 && slotMinutes < 30) {
+                                slotDate.setMinutes(30);
+                              } else if (slotMinutes > 30) {
+                                slotDate.setHours(slotDate.getHours() + 1);
+                                slotDate.setMinutes(0);
+                              }
+                              
+                              // Calculate end time (1 hour after start time)
+                              const endDate = new Date(slotDate);
+                              endDate.setHours(slotDate.getHours() + 1);
+                              
+                              // Format times for the form
+                              const formattedDate = format(slotDate, 'yyyy-MM-dd');
+                              const formattedStartTime = format(slotDate, 'HH:mm');
+                              const formattedEndTime = format(endDate, 'HH:mm');
+                              
+                              setEditingTimeBlockId(null);
+                              setNewTimeBlockTitle('');
+                              setNewTimeBlockStartDate(formattedDate);
+                              setNewTimeBlockStartTime(formattedStartTime);
+                              setNewTimeBlockEndDate(formattedDate);
+                              setNewTimeBlockEndTime(formattedEndTime);
+                              setNewTimeBlockDescription('');
+                              setIsTimeBlockDialogOpen(true);
+                            }}
+                          />
+                        );
+                      })}
+                      
+                      {/* Group time blocks by time slot to handle overlaps */}
+                      {(() => {
+                        // Group time blocks by their start time to identify overlaps
+                        const timeSlotGroups: Record<string, typeof timeBlocksForSelectedDate> = {};
+                        
+                        // First, group time blocks by their start time (rounded to 5-minute intervals for better grouping)
+                        timeBlocksForSelectedDate.forEach(timeBlock => {
+                          const startTime = new Date(timeBlock.startTime);
+                          // Round to nearest 5 minutes to group blocks that start close to each other
+                          const roundedMinutes = Math.round(startTime.getMinutes() / 5) * 5;
+                          const roundedStartTime = new Date(startTime);
+                          roundedStartTime.setMinutes(roundedMinutes);
+                          
+                          // Use timeKey for grouping blocks that start at similar times
+                          const timeKey = `${roundedStartTime.getHours()}-${roundedStartTime.getMinutes()}`;
+                          
+                          if (!timeSlotGroups[timeKey]) {
+                            timeSlotGroups[timeKey] = [];
+                          }
+                          timeSlotGroups[timeKey].push(timeBlock);
+                        });
+                        
+                        // Render each group of time blocks
+                        return Object.values(timeSlotGroups).flatMap(blocksInSlot => {
+                          // Calculate how many blocks are in this slot to determine column width
+                          const blockCount = blocksInSlot.length;
+                          // Adjust column width to account for spacing between columns
+                          const columnWidth = blockCount > 1 ? `calc((100% - ${(blockCount - 1) * 8}px) / ${blockCount})` : 'calc(100% - 8px)';
+                          
+                          return blocksInSlot.map((timeBlock, columnIndex) => {
+                            const startTime = new Date(timeBlock.startTime);
+                            const endTime = new Date(timeBlock.endTime);
+                            const startHour = startTime.getHours();
+                            const startMinutes = startTime.getMinutes();
+                            const endHour = endTime.getHours();
+                            const endMinutes = endTime.getMinutes();
+                            
+                            // Calculate position and height
+                            const dayStart = 6; // 6 AM
+                            const dayEnd = 24; // 12 AM (midnight)
+                            const totalHours = dayEnd - dayStart;
+                            
+                            // Ensure the time block is within our display range
+                            const clampedStartHour = Math.max(startHour, dayStart);
+                            const clampedEndHour = Math.min(endHour, dayEnd);
+                            
+                            // Calculate precise start position including minutes
+                            const startDecimalHours = (clampedStartHour - dayStart) + (startMinutes / 60);
+                            const startPosition = (startDecimalHours / totalHours) * 100;
+                            
+                            // Calculate precise duration including minutes
+                            const endDecimalHours = (clampedEndHour - dayStart) + (endMinutes / 60);
+                            const durationHours = endDecimalHours - startDecimalHours;
+                            const duration = (durationHours / totalHours) * 100;
+                            
+                            // Determine if this is a short time block (less than 1 hour)
+                            const isShortBlock = durationHours < 1;
+                            
+                            // Format time for display
+                            const timeDisplay = `${format(startTime, 'h:mm a')} - ${format(endTime, 'h:mm a')}`;
+                            // For short blocks, use a more compact time format
+                            const shortTimeDisplay = `${format(startTime, 'h:mm')}-${format(endTime, 'h:mm')}${format(endTime, 'a')}`;
+                            
+                            // Calculate actual time block position and height if available
+                            let actualStartPosition = null;
+                            let actualDuration = null;
+                            let actualTimeDisplay = null;
+                            
+                            if (timeBlock.actualStartTime && timeBlock.actualEndTime) {
+                              const actualStartTime = new Date(timeBlock.actualStartTime);
+                              const actualEndTime = new Date(timeBlock.actualEndTime);
+                              const actualStartHour = actualStartTime.getHours();
+                              const actualStartMinutes = actualStartTime.getMinutes();
+                              const actualEndHour = actualEndTime.getHours();
+                              const actualEndMinutes = actualEndTime.getMinutes();
+                              
+                              // Ensure the actual time block is within our display range
+                              const clampedActualStartHour = Math.max(actualStartHour, dayStart);
+                              const clampedActualEndHour = Math.min(actualEndHour, dayEnd);
+                              
+                              // Calculate precise actual start position including minutes
+                              const actualStartDecimalHours = (clampedActualStartHour - dayStart) + (actualStartMinutes / 60);
+                              actualStartPosition = (actualStartDecimalHours / totalHours) * 100;
+                              
+                              // Calculate precise actual duration including minutes
+                              const actualEndDecimalHours = (clampedActualEndHour - dayStart) + (actualEndMinutes / 60);
+                              const actualDurationHours = actualEndDecimalHours - actualStartDecimalHours;
+                              actualDuration = (actualDurationHours / totalHours) * 100;
+                              
+                              // Format actual time for display
+                              actualTimeDisplay = `${format(actualStartTime, 'h:mm a')} - ${format(actualEndTime, 'h:mm a')}`;
+                            }
+                            
+                            // Determine status-based styling
+                            const statusColor = {
+                              planned: 'border-blue-500',
+                              'in-progress': 'border-amber-500',
+                              completed: 'border-green-500'
+                            }[timeBlock.status || 'planned'];
+                            
+                            return (
+                              <div key={timeBlock.id}>
+                                {/* Planned time block */}
+                                <div 
+                                  className={`absolute bg-primary/10 rounded-md border-l-4 ${statusColor} overflow-hidden cursor-pointer hover:bg-primary/20 transition-colors ${isShortBlock ? 'py-1 px-2' : 'p-2'}`}
+                                  style={{ 
+                                    top: `${startPosition}%`, 
+                                    height: `${Math.max(duration, 3)}%`,
+                                    minHeight: isShortBlock ? '24px' : 
+                                      timeBlockTasks[timeBlock.id]?.length > 0 ? 
+                                        `${Math.max(60, 30 + (Math.min(timeBlockTasks[timeBlock.id].length, 3) * 20))}px` : 
+                                        '30px',
+                                    left: blockCount > 1 ? `calc(4px + ${columnIndex * (100 / blockCount)}% + ${columnIndex * 8}px)` : '4px',
+                                    width: columnWidth,
+                                    zIndex: 10,
+                                    opacity: timeBlock.actualStartTime && timeBlock.actualEndTime ? 0.6 : 1
+                                  }}
+                                  onClick={() => handleViewTimeBlock(timeBlock.id)}
+                                >
+                                  <div className="flex items-center justify-between w-full h-full">
+                                    <div className="overflow-hidden flex-1">
+                                      {isShortBlock ? (
+                                        <div className="flex items-center gap-2">
+                                          <p className="text-sm font-medium truncate">{timeBlock.title}</p>
+                                          <span className="text-xs text-muted-foreground whitespace-nowrap">{shortTimeDisplay}</span>
+                                        </div>
+                                      ) : (
+                                        <>
+                                          <p className="text-sm font-medium truncate">{timeBlock.title}</p>
+                                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                                            <Clock className="h-3 w-3 flex-shrink-0" />
+                                            <span className="truncate">{timeDisplay}</span>
+                                          </div>
+                                          {timeBlock.actualStartTime && timeBlock.actualEndTime && (
+                                            <div className="text-xs text-muted-foreground mt-0.5">
+                                              <span className="italic">Planned</span>
+                                            </div>
+                                          )}
+                                        </>
+                                      )}
+                                      
+                                      {/* Show task count if there are tasks */}
+                                      {!isShortBlock && timeBlockTasks[timeBlock.id]?.length > 0 && (
+                                        <div className="flex items-center gap-1 mt-1">
+                                          <span className="text-xs bg-primary/20 px-1.5 py-0.5 rounded-sm">
+                                            {timeBlockTasks[timeBlock.id].filter(t => t.completed).length}/{timeBlockTasks[timeBlock.id].length} tasks
+                                          </span>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                  {!isShortBlock && timeBlock.description && duration > 10 && (
+                                    <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{timeBlock.description}</p>
+                                  )}
+                                  
+                                  {/* Display tasks within the time block if there's enough space */}
+                                  {!isShortBlock && timeBlockTasks[timeBlock.id]?.length > 0 && duration > 15 && (
+                                    <div className="mt-2 space-y-1 border-t border-primary/10 pt-1">
+                                      {timeBlockTasks[timeBlock.id].slice(0, 3).map(task => (
+                                        <div key={task.id} className="flex items-center gap-1.5">
+                                          <div className={`w-2 h-2 rounded-full ${task.completed ? 'bg-green-500' : 'bg-gray-300'}`} />
+                                          <p className={`text-xs truncate ${task.completed ? 'line-through text-muted-foreground' : ''}`}>
+                                            {task.text}
+                                          </p>
+                                        </div>
+                                      ))}
+                                      {timeBlockTasks[timeBlock.id].length > 3 && (
+                                        <p className="text-xs text-muted-foreground">
+                                          +{timeBlockTasks[timeBlock.id].length - 3} more tasks
+                                        </p>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                                
+                                {/* Actual time block (if available) */}
+                                {actualStartPosition !== null && actualDuration !== null && (
+                                  <div 
+                                    className={`absolute bg-green-100 dark:bg-green-900/20 rounded-md border-l-4 border-green-500 overflow-hidden cursor-pointer hover:bg-green-200 dark:hover:bg-green-900/30 transition-colors ${isShortBlock ? 'py-1 px-2' : 'p-2'}`}
+                                    style={{ 
+                                      top: `${actualStartPosition}%`, 
+                                      height: `${Math.max(actualDuration, 3)}%`,
+                                      minHeight: isShortBlock ? '24px' : 
+                                        timeBlockTasks[timeBlock.id]?.length > 0 ? 
+                                          `${Math.max(60, 30 + (Math.min(timeBlockTasks[timeBlock.id].length, 3) * 20))}px` : 
+                                          '30px',
+                                      left: blockCount > 1 ? `calc(4px + ${columnIndex * (100 / blockCount)}% + ${columnIndex * 8}px)` : '4px',
+                                      width: columnWidth,
+                                      zIndex: 11
+                                    }}
+                                    onClick={() => handleViewTimeBlock(timeBlock.id)}
+                                  >
+                                    <div className="overflow-hidden">
+                                      <p className="text-sm font-medium truncate">{timeBlock.title}</p>
+                                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                                        <Clock className="h-3 w-3 flex-shrink-0" />
+                                        <span className="truncate">{actualTimeDisplay}</span>
+                                      </div>
+                                      <div className="text-xs text-green-700 dark:text-green-400 mt-0.5">
+                                        <span className="italic">Actual</span>
+                                      </div>
+                                      
+                                      {/* Display tasks within the actual time block if there's enough space */}
+                                      {!isShortBlock && timeBlockTasks[timeBlock.id]?.length > 0 && actualDuration > 15 && (
+                                        <div className="mt-2 space-y-1 border-t border-green-500/20 pt-1">
+                                          {timeBlockTasks[timeBlock.id].slice(0, 3).map(task => (
+                                            <div key={task.id} className="flex items-center gap-1.5">
+                                              <div className={`w-2 h-2 rounded-full ${task.completed ? 'bg-green-500' : 'bg-gray-300'}`} />
+                                              <p className={`text-xs truncate ${task.completed ? 'line-through text-muted-foreground' : ''}`}>
+                                                {task.text}
+                                              </p>
+                                            </div>
+                                          ))}
+                                          {timeBlockTasks[timeBlock.id].length > 3 && (
+                                            <p className="text-xs text-muted-foreground">
+                                              +{timeBlockTasks[timeBlock.id].length - 3} more tasks
+                                            </p>
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          });
+                        });
+                      })()}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      {/* Note Dialog */}
+      <Dialog open={isNoteDialogOpen} onOpenChange={setIsNoteDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{isEditingNote ? 'Edit Note' : 'Note'}</DialogTitle>
+          </DialogHeader>
+          {currentNote && (
+            <div className="space-y-4">
+              {isEditingNote ? (
+                <Textarea
+                  value={editedNoteContent}
+                  onChange={(e) => setEditedNoteContent(e.target.value)}
+                  className="min-h-[150px]"
+                />
+              ) : (
+                <div className="whitespace-pre-wrap">
+                  {currentNote.content.startsWith('💡 ') 
+                    ? currentNote.content.replace('💡 ', '') 
+                    : currentNote.content}
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Last updated: {format(new Date(currentNote.updatedAt), 'MMM d, yyyy h:mm a')}
+              </p>
+              
+              {!isEditingNote && selectedNote && (
+                <div className="space-y-2 pt-2 border-t">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-medium">Time Blocks</h3>
+                    <Dialog open={isAssignTimeBlockDialogOpen} onOpenChange={setIsAssignTimeBlockDialogOpen}>
+                      <DialogTrigger asChild>
+                        <Button variant="outline" size="sm" className="h-7 text-xs">
+                          <Plus className="h-3 w-3 mr-1" />
+                          Assign
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent className="sm:max-w-[425px]">
+                        <DialogHeader>
+                          <DialogTitle>Assign Time Blocks</DialogTitle>
+                          <DialogDescription>
+                            Select time blocks to assign to this note. Click again to unassign.
+                          </DialogDescription>
+                        </DialogHeader>
+                        <div className="max-h-[300px] overflow-y-auto py-4">
+                          {Object.values(timeBlocks).length > 0 ? (
+                            <div className="space-y-2">
+                              {Object.values(timeBlocks)
+                                .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
+                                .map(timeBlock => {
+                                  // Check if this time block is already assigned to this note
+                                  const isAssigned = timeBlockNotes[timeBlock.id]?.some(
+                                    tbNote => tbNote.content === currentNote?.content
+                                  );
+                                  
+                                  return (
+                                    <div 
+                                      key={timeBlock.id} 
+                                      className={`flex items-start justify-between p-2 rounded-sm cursor-pointer transition-colors ${
+                                        isAssigned ? 'bg-primary/20' : 'hover:bg-muted/50'
+                                      }`}
+                                      onClick={() => {
+                                        if (selectedNote) {
+                                          handleAssignNoteToTimeBlock(timeBlock.id, selectedNote);
+                                        }
+                                      }}
+                                    >
+                                      <div className="flex-1">
+                                        <p className="text-sm font-medium">{timeBlock.title}</p>
+                                        <p className="text-xs text-muted-foreground">
+                                          {format(new Date(timeBlock.startTime), 'MMM d, h:mm a')} - 
+                                          {format(new Date(timeBlock.endTime), 'h:mm a')}
+                                        </p>
+                                      </div>
+                                      {isAssigned && (
+                                        <div className="text-xs bg-primary/30 px-1.5 py-0.5 rounded-sm">
+                                          Assigned
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })
+                              }
+                            </div>
+                          ) : (
+                            <p className="text-sm text-muted-foreground text-center py-4">
+                              No time blocks available to assign.
+                            </p>
+                          )}
+                        </div>
+                        <DialogFooter>
+                          <Button 
+                            variant="outline" 
+                            type="button"
+                            onClick={() => setIsAssignTimeBlockDialogOpen(false)}
+                          >
+                            Done
+                          </Button>
+                        </DialogFooter>
+                      </DialogContent>
+                    </Dialog>
+                  </div>
+                  <div className="max-h-[150px] overflow-y-auto">
+                    {(() => {
+                      const associatedTimeBlocks = findTimeBlocksWithNote(selectedNote);
+                      
+                      if (associatedTimeBlocks.length === 0) {
+                        return (
+                          <p className="text-xs text-muted-foreground py-2">
+                            This note is not linked to any time blocks.
+                          </p>
+                        );
+                      }
+                      
+                      return (
+                        <div className="space-y-2">
+                          {associatedTimeBlocks.map(({ id, timeBlock }) => (
+                            <div 
+                              key={id}
+                              className="flex items-center justify-between p-2 bg-muted/40 rounded-md hover:bg-muted/60 transition-colors cursor-pointer"
+                              onClick={() => handleViewTimeBlockFromNote(id)}
+                            >
+                              <div>
+                                <p className="text-sm font-medium">{timeBlock.title}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {format(new Date(timeBlock.startTime), 'MMM d, h:mm a')} - 
+                                  {format(new Date(timeBlock.endTime), 'h:mm a')}
+                                </p>
+                              </div>
+                              <Button variant="ghost" size="icon" className="h-7 gap-1">
+                                <Clock className="h-3 w-3" />
+                                <span className="text-xs">View</span>
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter className="flex justify-between sm:justify-between">
+            {isEditingNote ? (
+              <>
+                <Button variant="outline" onClick={() => setIsEditingNote(false)}>
+                  Cancel
+                </Button>
+                <div className="flex gap-2">
+                  <Button variant="destructive" size="icon" onClick={handleDeleteNote}>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                  <Button onClick={handleSaveNote}>
+                    Save Changes
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <>
+                <Button variant="outline" onClick={handleCloseNoteDialog}>
+                  Close
+                </Button>
+                <div className="flex gap-2">
+                  <Button variant="destructive" size="icon" onClick={handleDeleteNote}>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                  <Button onClick={() => {
+                    if (currentNote) {
+                      setEditedNoteContent(currentNote.content);
+                      setIsEditingNote(true);
+                    }
+                  }}>
+                    <Edit className="mr-2 h-4 w-4" />
+                    Edit
+                  </Button>
+                </div>
+              </>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Task Edit Dialog */}
+      <Dialog open={isTaskDialogOpen} onOpenChange={setIsTaskDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Task</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Task Title</label>
+              <Input
+                value={editedTaskTitle}
+                onChange={(e) => setEditedTaskTitle(e.target.value)}
+                placeholder="Task title"
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Time Block (Optional)</label>
+              <div className="relative">
+                <select
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 pr-10"
+                  value={selectedTimeBlockId || ''}
+                  onChange={(e) => setSelectedTimeBlockId(e.target.value || null)}
+                >
+                  <option value="">No Time Block</option>
+                  {Object.values(timeBlocks)
+                    .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
+                    .map((timeBlock) => (
+                      <option key={timeBlock.id} value={timeBlock.id}>
+                        {timeBlock.title} ({format(new Date(timeBlock.startTime), 'h:mm a')})
+                      </option>
+                    ))}
+                </select>
+                <Clock className="h-4 w-4 absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground pointer-events-none" />
+              </div>
+              
+              {selectedTimeBlockId && (
+                <div className="mt-2 p-2 bg-primary/5 rounded-md border border-primary/10">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-primary"></div>
+                    <p className="text-sm font-medium">{timeBlocks[selectedTimeBlockId]?.title}</p>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {format(new Date(timeBlocks[selectedTimeBlockId]?.startTime), 'h:mm a')} - 
+                    {format(new Date(timeBlocks[selectedTimeBlockId]?.endTime), 'h:mm a')}
+                  </p>
+                </div>
+              )}
+              
+              <p className="text-xs text-muted-foreground">
+                Associating a task with a time block will make it appear in both places.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsTaskDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveEditedTask}>
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Time Block Details Dialog */}
+      <Dialog open={isTimeBlockDetailsOpen} onOpenChange={(open) => {
+        if (!open) {
+          // Save changes when dialog is closed
+          handleSaveTimeBlockDetails();
+        }
+        setIsTimeBlockDetailsOpen(open);
+      }}>
+        <DialogContent className="sm:max-w-md p-0 overflow-hidden">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Time Block Details</DialogTitle>
+          </DialogHeader>
+          <div className="px-6 pt-6 pb-2">
+            <Input 
+              value={newTimeBlockTitle}
+              onChange={(e) => setNewTimeBlockTitle(e.target.value)}
+              className="font-semibold text-xl border-none px-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+              placeholder="Time Block Title"
+            />
+          </div>
+          
+          {viewingTimeBlockId && (
+            <div className="flex flex-col h-full">
+              <div className="flex border-b">
+                <button 
+                  className={`px-6 py-3 text-sm font-medium transition-colors ${activeTimeBlockTab === 'details' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+                  onClick={() => setActiveTimeBlockTab('details')}
+                >
+                  Details
+                </button>
+                <button 
+                  className={`px-6 py-3 text-sm font-medium transition-colors ${activeTimeBlockTab === 'tasks' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+                  onClick={() => setActiveTimeBlockTab('tasks')}
+                >
+                  Tasks
+                </button>
+                <button 
+                  className={`px-6 py-3 text-sm font-medium transition-colors ${activeTimeBlockTab === 'notes' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+                  onClick={() => setActiveTimeBlockTab('notes')}
+                >
+                  Notes
+                </button>
+              </div>
+              
+              <div className="p-6 flex-1 overflow-y-auto max-h-[60vh]">
+                {activeTimeBlockTab === 'details' && (
+                  <div className="space-y-5">
+                    <div>
+                      <h3 className="text-sm font-medium mb-3">Time</h3>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm text-muted-foreground">Start</span>
+                          </div>
+                          <div className="relative">
+                            <Input 
+                              type="date" 
+                              value={newTimeBlockStartDate}
+                              onChange={(e) => setNewTimeBlockStartDate(e.target.value)}
+                              className="text-sm pr-8"
+                            />
+                            <CalendarIcon className="h-4 w-4 absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                          </div>
+                          <div className="relative">
+                            <Input 
+                              type="time" 
+                              value={newTimeBlockStartTime}
+                              onChange={(e) => setNewTimeBlockStartTime(e.target.value)}
+                              className="text-sm pr-8"
+                            />
+                            <Clock className="h-4 w-4 absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm text-muted-foreground">End</span>
+                          </div>
+                          <div className="relative">
+                            <Input 
+                              type="date" 
+                              value={newTimeBlockEndDate}
+                              onChange={(e) => setNewTimeBlockEndDate(e.target.value)}
+                              className="text-sm pr-8"
+                            />
+                            <CalendarIcon className="h-4 w-4 absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                          </div>
+                          <div className="relative">
+                            <Input 
+                              type="time" 
+                              value={newTimeBlockEndTime}
+                              onChange={(e) => setNewTimeBlockEndTime(e.target.value)}
+                              className="text-sm pr-8"
+                            />
+                            <Clock className="h-4 w-4 absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            For midnight (12:00 AM), enter 00:00
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+                
+                {activeTimeBlockTab === 'notes' && viewingTimeBlockId && (
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Textarea
+                        placeholder="Add notes for this time block..."
+                        value={newTimeBlockNote}
+                        onChange={(e) => setNewTimeBlockNote(e.target.value)}
+                        className="min-h-[120px] resize-none"
+                      />
+                      <div className="flex justify-end">
+                        <Button 
+                          onClick={() => handleAddTimeBlockNote(viewingTimeBlockId)}
+                        >
+                          Add Note
+                        </Button>
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-3">
+                      <h3 className="text-sm font-medium">Assign Existing Notes</h3>
+                      <div className="max-h-[150px] overflow-y-auto border rounded-md p-2">
+                        {Object.values(notes).length > 0 ? (
+                          <div className="space-y-2">
+                            {Object.values(notes)
+                              .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+                              .map(note => {
+                                // Check if this note is already assigned to this time block
+                                const isAssigned = timeBlockNotes[viewingTimeBlockId]?.some(
+                                  tbNote => tbNote.content === note.content
+                                );
+                                
+                                return (
+                                  <div 
+                                    key={note.id} 
+                                    className={`flex items-start justify-between p-2 rounded-sm cursor-pointer transition-colors ${
+                                      isAssigned ? 'bg-primary/20' : 'hover:bg-muted/50'
+                                    }`}
+                                    onClick={() => handleAssignNoteToTimeBlock(viewingTimeBlockId, note.id)}
+                                  >
+                                    <div className="flex-1">
+                                      <p className="text-sm line-clamp-1">
+                                        {note.content.startsWith('💡 ') 
+                                          ? note.content.replace('💡 ', '') 
+                                          : note.content}
+                                      </p>
+                                      <p className="text-xs text-muted-foreground">
+                                        {format(new Date(note.updatedAt), 'MMM d, h:mm a')}
+                                      </p>
+                                    </div>
+                                    {isAssigned && (
+                                      <div className="text-xs bg-primary/30 px-1.5 py-0.5 rounded-sm">
+                                        Assigned
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })
+                            }
+                          </div>
+                        ) : (
+                          <p className="text-sm text-muted-foreground text-center py-4">
+                            No notes available to assign
+                          </p>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Click on a note to assign it to this time block
+                      </p>
+                    </div>
+                    
+                    <div className="space-y-0">
+                      {timeBlockNotes[viewingTimeBlockId]?.length > 0 ? (
+                        <>
+                          <h3 className="text-sm font-medium mb-2">Notes for this Time Block</h3>
+                          <div className="space-y-3 max-h-[250px] overflow-y-auto pr-1">
+                            {timeBlockNotes[viewingTimeBlockId].map(note => (
+                              <div key={note.id} className="bg-muted/50 p-3 rounded-md relative group">
+                                <p className="text-sm whitespace-pre-wrap">{note.content}</p>
+                                <Button 
+                                  variant="ghost" 
+                                  size="icon"
+                                  className="h-6 w-6 absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  onClick={() => handleDeleteTimeBlockNote(viewingTimeBlockId, note.id)}
+                                >
+                                  <X className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center py-8 text-center">
+                          <div className="bg-muted/50 p-3 rounded-full mb-3">
+                            <StickyNote className="h-6 w-6 opacity-50" />
+                          </div>
+                          <p className="text-sm text-muted-foreground">
+                            No notes yet
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Add notes to remember important details
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+              
+              <div className="border-t p-4 flex justify-between">
+                <Button 
+                  variant="ghost" 
+                  size="icon"
+                  className="text-destructive hover:text-destructive/90"
+                  onClick={() => {
+                    if (viewingTimeBlockId) {
+                      handleDeleteTimeBlock(viewingTimeBlockId);
+                      setIsTimeBlockDetailsOpen(false);
+                    }
+                  }}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+                <div className="flex gap-2">
+                  <Button 
+                    variant="outline" 
+                    className="flex items-center gap-1"
+                    onClick={() => {
+                      if (viewingTimeBlockId) {
+                        handleSaveTimeBlockDetails();
+                        setIsTimeBlockDetailsOpen(false);
+                      }
+                    }}
+                  >
+                    <Save className="h-4 w-4 mr-1" />
+                    Update Time Block
+                  </Button>
+                  <Button variant="outline" onClick={() => setIsTimeBlockDetailsOpen(false)}>
+                    Close
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Shutdown Dialog */}
+      <Dialog open={isShutdownDialogOpen} onOpenChange={setIsShutdownDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Daily Shutdown</DialogTitle>
+            <DialogDescription>
+              Complete your day with intention
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-3">
+              <h3 className="text-sm font-medium">Shutdown Checklist</h3>
+              <div className="space-y-2">
+                <div className="flex items-start space-x-2">
+                  <Checkbox 
+                    id="reviewedTasks" 
+                    checked={shutdownChecklist.reviewedTasks}
+                    onCheckedChange={() => handleShutdownChecklistToggle('reviewedTasks')}
+                  />
+                  <div className="grid gap-1.5 leading-none">
+                    <label
+                      htmlFor="reviewedTasks"
+                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                    >
+                      Review completed tasks
+                    </label>
+                    <p className="text-xs text-muted-foreground">
+                      Acknowledge what you&apos;ve accomplished today
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="flex items-start space-x-2">
+                  <Checkbox 
+                    id="capturedLooseEnds" 
+                    checked={shutdownChecklist.capturedLooseEnds}
+                    onCheckedChange={() => handleShutdownChecklistToggle('capturedLooseEnds')}
+                  />
+                  <div className="grid gap-1.5 leading-none">
+                    <label
+                      htmlFor="capturedLooseEnds"
+                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                    >
+                      Capture loose ends
+                    </label>
+                    <p className="text-xs text-muted-foreground">
+                      Note any unfinished tasks or ideas that need attention
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="flex items-start space-x-2">
+                  <Checkbox 
+                    id="plannedTomorrow" 
+                    checked={shutdownChecklist.plannedTomorrow}
+                    onCheckedChange={() => handleShutdownChecklistToggle('plannedTomorrow')}
+                  />
+                  <div className="grid gap-1.5 leading-none">
+                    <label
+                      htmlFor="plannedTomorrow"
+                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                    >
+                      Plan tomorrow
+                    </label>
+                    <p className="text-xs text-muted-foreground">
+                      Set up your time blocks and priorities for tomorrow
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="flex items-start space-x-2">
+                  <Checkbox 
+                    id="clearMind" 
+                    checked={shutdownChecklist.clearMind}
+                    onCheckedChange={() => handleShutdownChecklistToggle('clearMind')}
+                  />
+                  <div className="grid gap-1.5 leading-none">
+                    <label
+                      htmlFor="clearMind"
+                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                    >
+                      Clear your mind
+                    </label>
+                    <p className="text-xs text-muted-foreground">
+                      Say &quot;shutdown complete&quot; and disconnect from work
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div className="space-y-2">
+              <h3 className="text-sm font-medium">Daily Reflection</h3>
+              <Textarea
+                placeholder="What went well today? What could be improved? Any insights or lessons learned?"
+                className="min-h-[150px]"
+                value={shutdownReflection}
+                onChange={(e) => setShutdownReflection(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                This reflection will be saved as a note when you complete the shutdown process.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <div className="flex justify-between w-full">
+              <Button variant="outline" onClick={() => setIsShutdownDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleCompleteShutdown}>
+                Complete Shutdown
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+} 
