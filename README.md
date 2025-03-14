@@ -24,8 +24,8 @@ A modern productivity tool for time blocking, task management, and daily plannin
 
 1. Clone the repository
 ```bash
-git clone https://github.com/yourusername/ChronoFlow.git
-cd ChronoFlow
+git clone https://github.com/whoskite/chronosflow.git
+cd chronosflow
 ```
 
 2. Install dependencies
