@@ -2,7 +2,8 @@
 
 A modern productivity tool for time blocking, task management, and daily planning with a beautiful UI.
 
-![ChronoFlow](https://i.imgur.com/placeholder.png)
+![image](https://github.com/user-attachments/assets/16db7c50-f6ea-416a-a7fd-96c94636cc9d)
+
 
 ## Features
 
