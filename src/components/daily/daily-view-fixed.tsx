@@ -9,6 +9,12 @@ import { TimeBlock } from '@/lib/store/use-store';
 import { format, addDays, subDays, isSameDay, isToday } from 'date-fns';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
+import { 
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 // Define interfaces for time block tasks and notes
 interface TimeBlockTask {
@@ -846,16 +852,23 @@ export function DailyView() {
                           {todayNotes.map((note) => (
                             <div 
                               key={note.id} 
-                              className="p-3 rounded-md border border-border bg-card hover:bg-accent/10 group"
+                              className="p-3 rounded-md border border-border bg-card hover:bg-accent/10 hover:border-primary/30 transition-colors group"
                             >
                               {isEditingNote === note.id ? (
-                                <div className="space-y-2">
+                                <div className="space-y-2 animate-in fade-in-0 zoom-in-95 duration-200">
                                   <Textarea
                                     value={editedNoteContent}
                                     onChange={(e) => setEditedNoteContent(e.target.value)}
                                     className="min-h-[100px] text-sm"
+                                    onKeyDown={(e) => {
+                                      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                                        e.preventDefault();
+                                        handleSaveEditedNote();
+                                      }
+                                    }}
                                   />
                                   <div className="flex justify-end gap-2">
+                                    <span className="text-xs text-muted-foreground self-center mr-auto">Press Ctrl+Enter to save</span>
                                     <Button variant="outline" size="sm" onClick={handleCancelEditNote}>
                                       Cancel
                                     </Button>
@@ -866,7 +879,19 @@ export function DailyView() {
                                 </div>
                               ) : (
                                 <>
-                                  <p className="text-sm whitespace-pre-wrap">{note.content}</p>
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <p 
+                                          className="text-sm whitespace-pre-wrap cursor-pointer hover:bg-accent/5 p-1 rounded"
+                                          onClick={() => handleEditNote(note.id)}
+                                        >{note.content}</p>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        <p>Click to edit</p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
                                   <div className="flex justify-between items-center mt-2">
                                     <p className="text-xs text-muted-foreground">
                                       {format(new Date(note.createdAt), 'h:mm a')}
@@ -921,16 +946,23 @@ export function DailyView() {
                             {olderNotes.map((note) => (
                               <div 
                                 key={note.id} 
-                                className="p-3 rounded-md border border-border bg-card hover:bg-accent/10 group"
+                                className="p-3 rounded-md border border-border bg-card hover:bg-accent/10 hover:border-primary/30 transition-colors group"
                               >
                                 {isEditingNote === note.id ? (
-                                  <div className="space-y-2">
+                                  <div className="space-y-2 animate-in fade-in-0 zoom-in-95 duration-200">
                                     <Textarea
                                       value={editedNoteContent}
                                       onChange={(e) => setEditedNoteContent(e.target.value)}
                                       className="min-h-[100px] text-sm"
+                                      onKeyDown={(e) => {
+                                        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                                          e.preventDefault();
+                                          handleSaveEditedNote();
+                                        }
+                                      }}
                                     />
                                     <div className="flex justify-end gap-2">
+                                      <span className="text-xs text-muted-foreground self-center mr-auto">Press Ctrl+Enter to save</span>
                                       <Button variant="outline" size="sm" onClick={handleCancelEditNote}>
                                         Cancel
                                       </Button>
@@ -941,7 +973,19 @@ export function DailyView() {
                                   </div>
                                 ) : (
                                   <>
-                                    <p className="text-sm whitespace-pre-wrap">{note.content}</p>
+                                    <TooltipProvider>
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <p 
+                                            className="text-sm whitespace-pre-wrap cursor-pointer hover:bg-accent/5 p-1 rounded"
+                                            onClick={() => handleEditNote(note.id)}
+                                          >{note.content}</p>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          <p>Click to edit</p>
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    </TooltipProvider>
                                     <div className="flex justify-between items-center mt-2">
                                       <p className="text-xs text-muted-foreground">
                                         {format(new Date(note.createdAt), 'MMM d, yyyy')}
