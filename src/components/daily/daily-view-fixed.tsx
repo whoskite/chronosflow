@@ -3,10 +3,10 @@
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Plus, ChevronLeft, ChevronRight, Power, Lightbulb, StickyNote } from 'lucide-react';
+import { Plus, ChevronLeft, ChevronRight, Power, Lightbulb, StickyNote, Edit, Trash2, ChevronDown } from 'lucide-react';
 import { useStore } from '@/lib/store/use-store';
 import { TimeBlock } from '@/lib/store/use-store';
-import { format, addDays, subDays, isSameDay } from 'date-fns';
+import { format, addDays, subDays, isSameDay, isToday } from 'date-fns';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 
@@ -31,7 +31,7 @@ export function DailyView() {
   const [isAddingIdea, setIsAddingIdea] = useState(false);
   const [selectedNote, setSelectedNote] = useState<string | null>(null);
   const [isNoteDialogOpen, setIsNoteDialogOpen] = useState(false);
-  const [isEditingNote, setIsEditingNote] = useState(false);
+  const [isEditingNote, setIsEditingNote] = useState<string | null>(null);
   const [editedNoteContent, setEditedNoteContent] = useState('');
   const [isTaskDialogOpen, setIsTaskDialogOpen] = useState(false);
   const [isAssignTimeBlockDialogOpen, setIsAssignTimeBlockDialogOpen] = useState(false);
@@ -75,7 +75,8 @@ export function DailyView() {
   const [isSelectingNote, setIsSelectingNote] = useState(false);
   const [selectedNotesForTimeBlock, setSelectedNotesForTimeBlock] = useState<string[]>([]);
   const [noteSearchQuery, setNoteSearchQuery] = useState('');
-
+  const [isOlderNotesCollapsed, setIsOlderNotesCollapsed] = useState(true);
+  
   const { 
     timeBlocks,
     addTask, 
@@ -86,7 +87,9 @@ export function DailyView() {
     tasks,
     updateTask,
     deleteTask,
-    notes
+    notes,
+    updateNote,
+    deleteNote
   } = useStore();
 
   // Add functions to navigate between dates
@@ -425,542 +428,710 @@ export function DailyView() {
   // Add the newTaskCompleted state
   const [newTaskCompleted, setNewTaskCompleted] = useState(false);
 
+  // Filter notes for today and older notes
+  const todayNotes = Object.values(notes)
+    .filter(note => isToday(new Date(note.createdAt)))
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    
+  const olderNotes = Object.values(notes)
+    .filter(note => !isToday(new Date(note.createdAt)))
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  
+  // Handle editing a note
+  const handleEditNote = (id: string) => {
+    setIsEditingNote(id);
+    setEditedNoteContent(notes[id].content);
+  };
+  
+  // Handle saving an edited note
+  const handleSaveEditedNote = () => {
+    if (isEditingNote && editedNoteContent.trim()) {
+      updateNote(isEditingNote, { content: editedNoteContent.trim() });
+      setIsEditingNote(null);
+      setEditedNoteContent('');
+    }
+  };
+  
+  // Handle canceling note edit
+  const handleCancelEditNote = () => {
+    setIsEditingNote(null);
+    setEditedNoteContent('');
+  };
+
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between mb-6 sticky top-0 bg-background z-30 py-4 border-b">
-        <div className="flex items-center gap-4">
-          <h2 className="text-3xl font-bold tracking-tight">{formattedDate}</h2>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="icon" onClick={goToPreviousDay}>
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <Button variant="outline" size="sm" onClick={goToToday}>
-              Today
-            </Button>
-            <Button variant="outline" size="icon" onClick={goToNextDay}>
-              <ChevronRight className="h-4 w-4" />
-            </Button>
+      {/* Fixed Header with Logo */}
+      <div className="fixed top-0 left-0 right-0 bg-background border-b z-50 px-6 py-3 flex items-center justify-between shadow-sm">
+        <div className="flex items-center gap-2">
+          <img src="/project-ai-logo.svg" alt="ProjectAI Logo" className="h-8 w-8" />
+          <div className="font-bold text-xl">
+            <span className="text-primary">Project</span>AI
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           <Button 
             variant="outline" 
+            size="sm"
             className="flex items-center gap-2"
             onClick={() => setIsShutdownDialogOpen(true)}
           >
             <Power className="h-4 w-4" />
             <span>Shutdown</span>
           </Button>
-              <Button onClick={() => setIsAddingTask(true)}>
-                <Plus className="mr-2 h-4 w-4" />
-                Add Item
-                </Button>
+          <Button size="sm" onClick={() => setIsAddingTask(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            Add Item
+          </Button>
         </div>
       </div>
 
-      <div className="flex flex-1 gap-6 h-full overflow-y-auto">
-        {/* Tasks and Ideas Column */}
-        <div className="w-2/3 flex flex-col gap-6">
-          {/* Tasks Section */}
-          <Card>
-            <CardHeader className="pb-2">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-lg">Today&apos;s Tasks</CardTitle>
-                <Button variant="ghost" size="sm" onClick={() => setIsAddingTask(true)}>
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {tasksForSelectedDate.length === 0 ? (
-                <div className="space-y-4">
-                  <p className="text-sm text-muted-foreground">No tasks for today. Add one to get started.</p>
-                  
-                  {/* Inline task input field */}
-                  <div className="flex items-center gap-2 pt-2 border-t">
-                    <div className="flex items-center w-full relative">
-                      <input
-                        className="flex h-10 w-full rounded-md border border-input bg-background pl-9 pr-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                        placeholder="Type a task and press Enter to add..."
-                        value={newTaskTitle}
-                        onChange={(e) => setNewTaskTitle(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && newTaskTitle.trim()) {
-                            handleAddTask();
-                          }
-                        }}
-                      />
-                      <Plus className="h-4 w-4 absolute left-3 text-muted-foreground" />
+      {/* Main Content - adjusted with top padding to account for fixed header */}
+      <div className="flex flex-col h-full mt-16">
+        <div className="flex items-center justify-between mb-6 sticky top-16 bg-background z-30 py-4 border-b px-6">
+          <div className="flex items-center gap-4">
+            <h2 className="text-3xl font-bold tracking-tight">{formattedDate}</h2>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="icon" onClick={goToPreviousDay}>
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <Button variant="outline" size="sm" onClick={goToToday}>
+                Today
+              </Button>
+              <Button variant="outline" size="icon" onClick={goToNextDay}>
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-1 gap-6 h-full overflow-y-auto px-6">
+          {/* Tasks and Ideas Column */}
+          <div className="w-2/3 flex flex-col gap-6">
+            {/* Tasks Section */}
+            <Card>
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-lg">Today&apos;s Tasks</CardTitle>
+                  <Button variant="ghost" size="sm" onClick={() => setIsAddingTask(true)}>
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {tasksForSelectedDate.length === 0 ? (
+                  <div className="space-y-4">
+                    <p className="text-sm text-muted-foreground">No tasks for today. Add one to get started.</p>
+                    
+                    {/* Inline task input field */}
+                    <div className="flex items-center gap-2 pt-2 border-t">
+                      <div className="flex items-center w-full relative">
+                        <input
+                          className="flex h-10 w-full rounded-md border border-input bg-background pl-9 pr-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                          placeholder="Type a task and press Enter to add..."
+                          value={newTaskTitle}
+                          onChange={(e) => setNewTaskTitle(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && newTaskTitle.trim()) {
+                              handleAddTask();
+                            }
+                          }}
+                        />
+                        <Plus className="h-4 w-4 absolute left-3 text-muted-foreground" />
+                      </div>
                     </div>
                   </div>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    {/* Active (uncompleted) tasks */}
-                    {tasksForSelectedDate
-                      .filter(task => !task.completed)
-                      .map((task) => (
-                        <div key={task.id} className="flex items-start gap-2 py-1 group">
-                          <Checkbox 
-                            id={`task-${task.id}`} 
-                            checked={task.completed}
-                            onCheckedChange={(checked) => {
-                              // Add animation class before updating state
-                              const taskElement = document.getElementById(`task-${task.id}`);
-                              if (taskElement && taskElement.parentElement) {
-                                if (checked) {
-                                  taskElement.parentElement.classList.add('task-complete-animation');
-                                  // Wait for animation to complete before updating state
-                                  setTimeout(() => {
+                ) : (
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      {/* Active (uncompleted) tasks */}
+                      {tasksForSelectedDate
+                        .filter(task => !task.completed)
+                        .map((task) => (
+                          <div key={task.id} className="flex items-start gap-2 py-1 group">
+                            <Checkbox 
+                              id={`task-${task.id}`} 
+                              checked={task.completed}
+                              onCheckedChange={(checked) => {
+                                // Add animation class before updating state
+                                const taskElement = document.getElementById(`task-${task.id}`);
+                                if (taskElement && taskElement.parentElement) {
+                                  if (checked) {
+                                    taskElement.parentElement.classList.add('task-complete-animation');
+                                    // Wait for animation to complete before updating state
+                                    setTimeout(() => {
+                                      updateTask(task.id, { completed: !!checked });
+                                    }, 300);
+                                  } else {
                                     updateTask(task.id, { completed: !!checked });
-                                  }, 300);
+                                  }
                                 } else {
                                   updateTask(task.id, { completed: !!checked });
                                 }
-                              } else {
-                                updateTask(task.id, { completed: !!checked });
-                              }
-                            }}
-                          />
-                          <label 
-                            htmlFor={`task-${task.id}`}
-                            className="text-sm flex-1"
-                          >
-                            {task.title}
-                          </label>
-                          <Button 
-                            variant="ghost" 
-                            size="icon"
-                            className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
-                            onClick={() => {
-                              // Add delete animation
-                              const taskElement = document.getElementById(`task-${task.id}`);
-                              if (taskElement && taskElement.parentElement) {
-                                taskElement.parentElement.classList.add('task-delete-animation');
-                                // Wait for animation to complete before removing
-                                setTimeout(() => {
-                                  // Remove the task
-                                  const updatedTasks = { ...tasks };
-                                  delete updatedTasks[task.id];
-                                  useStore.setState({ tasks: updatedTasks });
-                                }, 300);
-                              } else {
-                                // Remove immediately if animation fails
-                                const updatedTasks = { ...tasks };
-                                delete updatedTasks[task.id];
-                                useStore.setState({ tasks: updatedTasks });
-                              }
-                            }}
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-trash-2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
-                          </Button>
-                        </div>
-                      ))}
-                  </div>
-                  
-                  {/* Completed tasks section */}
-                  {tasksForSelectedDate.some(task => task.completed) && (
-                    <div className="pt-2 border-t">
-                      <div 
-                        className="flex items-center gap-2 cursor-pointer py-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
-                        onClick={() => setIsCompletedTasksVisible(!isCompletedTasksVisible)}
-                      >
-                        <div className={`transform transition-transform duration-200 ${isCompletedTasksVisible ? 'rotate-90' : ''}`}>
-                          <ChevronRight className="h-4 w-4" />
-                        </div>
-                        <span>Completed</span>
-                        <span className="text-xs bg-muted rounded-full px-2 py-0.5">
-                          {tasksForSelectedDate.filter(task => task.completed).length}
-                        </span>
-                      </div>
-                      
-                      <div 
-                        className={`space-y-2 overflow-hidden transition-all duration-300 ease-in-out ${
-                          isCompletedTasksVisible 
-                            ? 'max-h-[500px] opacity-100 mt-2' 
-                            : 'max-h-0 opacity-0'
-                        }`}
-                      >
-                        {tasksForSelectedDate
-                          .filter(task => task.completed)
-                          .map((task) => (
-                            <div key={task.id} className="flex items-start gap-2 py-1 pl-6 group">
-                              <Checkbox 
-                                id={`task-${task.id}`} 
-                                checked={task.completed}
-                                onCheckedChange={(checked) => {
-                                  // Add animation class before updating state
-                                  const taskElement = document.getElementById(`task-${task.id}`);
-                                  if (taskElement && taskElement.parentElement) {
-                                    if (!checked) {
-                                      taskElement.parentElement.classList.add('task-uncomplete-animation');
-                                      // Wait for animation to complete before updating state
-                                      setTimeout(() => {
-                                        updateTask(task.id, { completed: !!checked });
-                                      }, 300);
-                                    } else {
-                                      updateTask(task.id, { completed: !!checked });
-                                    }
-                                  } else {
-                                    updateTask(task.id, { completed: !!checked });
-                                  }
-                                }}
-                              />
-                              <label 
-                                htmlFor={`task-${task.id}`}
-                                className="text-sm flex-1 line-through text-muted-foreground"
-                              >
-                                {task.title}
-                              </label>
-                              <Button 
-                                variant="ghost" 
-                                size="icon"
-                                className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
-                                onClick={() => {
-                                  // Add delete animation
-                                  const taskElement = document.getElementById(`task-${task.id}`);
-                                  if (taskElement && taskElement.parentElement) {
-                                    taskElement.parentElement.classList.add('task-delete-animation');
-                                    // Wait for animation to complete before removing
-                                    setTimeout(() => {
-                                      // Remove the task
-                                      const updatedTasks = { ...tasks };
-                                      delete updatedTasks[task.id];
-                                      useStore.setState({ tasks: updatedTasks });
-                                    }, 300);
-                                  } else {
-                                    // Remove immediately if animation fails
+                              }}
+                            />
+                            <label 
+                              htmlFor={`task-${task.id}`}
+                              className="text-sm flex-1"
+                            >
+                              {task.title}
+                            </label>
+                            <Button 
+                              variant="ghost" 
+                              size="icon"
+                              className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                              onClick={() => {
+                                // Add delete animation
+                                const taskElement = document.getElementById(`task-${task.id}`);
+                                if (taskElement && taskElement.parentElement) {
+                                  taskElement.parentElement.classList.add('task-delete-animation');
+                                  // Wait for animation to complete before removing
+                                  setTimeout(() => {
+                                    // Remove the task
                                     const updatedTasks = { ...tasks };
                                     delete updatedTasks[task.id];
                                     useStore.setState({ tasks: updatedTasks });
-                                  }
-                                }}
-                              >
-                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-trash-2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
-                              </Button>
-                            </div>
-                          ))}
+                                  }, 300);
+                                } else {
+                                  // Remove immediately if animation fails
+                                  const updatedTasks = { ...tasks };
+                                  delete updatedTasks[task.id];
+                                  useStore.setState({ tasks: updatedTasks });
+                                }
+                              }}
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-trash-2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
+                            </Button>
+                          </div>
+                        ))}
+                    </div>
+                    
+                    {/* Completed tasks section */}
+                    {tasksForSelectedDate.some(task => task.completed) && (
+                      <div className="pt-2 border-t">
+                        <div 
+                          className="flex items-center gap-2 cursor-pointer py-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                          onClick={() => setIsCompletedTasksVisible(!isCompletedTasksVisible)}
+                        >
+                          <div className={`transform transition-transform duration-200 ${isCompletedTasksVisible ? 'rotate-90' : ''}`}>
+                            <ChevronRight className="h-4 w-4" />
+                          </div>
+                          <span>Completed</span>
+                          <span className="text-xs bg-muted rounded-full px-2 py-0.5">
+                            {tasksForSelectedDate.filter(task => task.completed).length}
+                          </span>
+                        </div>
+                        
+                        <div 
+                          className={`space-y-2 overflow-hidden transition-all duration-300 ease-in-out ${
+                            isCompletedTasksVisible 
+                              ? 'max-h-[500px] opacity-100 mt-2' 
+                              : 'max-h-0 opacity-0'
+                          }`}
+                        >
+                          {tasksForSelectedDate
+                            .filter(task => task.completed)
+                            .map((task) => (
+                              <div key={task.id} className="flex items-start gap-2 py-1 pl-6 group">
+                                <Checkbox 
+                                  id={`task-${task.id}`} 
+                                  checked={task.completed}
+                                  onCheckedChange={(checked) => {
+                                    // Add animation class before updating state
+                                    const taskElement = document.getElementById(`task-${task.id}`);
+                                    if (taskElement && taskElement.parentElement) {
+                                      if (!checked) {
+                                        taskElement.parentElement.classList.add('task-uncomplete-animation');
+                                        // Wait for animation to complete before updating state
+                                        setTimeout(() => {
+                                          updateTask(task.id, { completed: !!checked });
+                                        }, 300);
+                                      } else {
+                                        updateTask(task.id, { completed: !!checked });
+                                      }
+                                    } else {
+                                      updateTask(task.id, { completed: !!checked });
+                                    }
+                                  }}
+                                />
+                                <label 
+                                  htmlFor={`task-${task.id}`}
+                                  className="text-sm flex-1 line-through text-muted-foreground"
+                                >
+                                  {task.title}
+                                </label>
+                                <Button 
+                                  variant="ghost" 
+                                  size="icon"
+                                  className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  onClick={() => {
+                                    // Add delete animation
+                                    const taskElement = document.getElementById(`task-${task.id}`);
+                                    if (taskElement && taskElement.parentElement) {
+                                      taskElement.parentElement.classList.add('task-delete-animation');
+                                      // Wait for animation to complete before removing
+                                      setTimeout(() => {
+                                        // Remove the task
+                                        const updatedTasks = { ...tasks };
+                                        delete updatedTasks[task.id];
+                                        useStore.setState({ tasks: updatedTasks });
+                                      }, 300);
+                                    } else {
+                                      // Remove immediately if animation fails
+                                      const updatedTasks = { ...tasks };
+                                      delete updatedTasks[task.id];
+                                      useStore.setState({ tasks: updatedTasks });
+                                    }
+                                  }}
+                                >
+                                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-trash-2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
+                                </Button>
+                              </div>
+                            ))}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Inline task input field */}
+                    <div className="flex items-center gap-2 pt-2 border-t">
+                      <div className="flex items-center w-full relative">
+                        <input
+                          className="flex h-10 w-full rounded-md border border-input bg-background pl-9 pr-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                          placeholder="Type a task and press Enter to add..."
+                          value={newTaskTitle}
+                          onChange={(e) => setNewTaskTitle(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && newTaskTitle.trim()) {
+                              handleAddTask();
+                            }
+                          }}
+                        />
+                        <Plus className="h-4 w-4 absolute left-3 text-muted-foreground" />
                       </div>
                     </div>
-                  )}
-                  
-                  {/* Inline task input field */}
-                  <div className="flex items-center gap-2 pt-2 border-t">
-                    <div className="flex items-center w-full relative">
-                      <input
-                        className="flex h-10 w-full rounded-md border border-input bg-background pl-9 pr-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                        placeholder="Type a task and press Enter to add..."
-                        value={newTaskTitle}
-                        onChange={(e) => setNewTaskTitle(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && newTaskTitle.trim()) {
-                            handleAddTask();
-                          }
-                        }}
-                      />
-                      <Plus className="h-4 w-4 absolute left-3 text-muted-foreground" />
-                    </div>
                   </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                )}
+              </CardContent>
+            </Card>
 
-          {/* Ideas Section */}
-          <Card>
-            <CardHeader className="pb-2">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-lg">Ideas & Notes</CardTitle>
-                <div className="flex gap-1">
-                  <Button variant="ghost" size="sm" onClick={() => setIsAddingIdea(true)}>
-                    <Lightbulb className="h-4 w-4" />
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={() => setIsAddingNote(true)}>
-                    <StickyNote className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {sortedNotes.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Ideas and notes will appear here.</p>
-              ) : (
-                <div className="space-y-4">
-                  {sortedNotes.map((note) => (
-                    <div 
-                      key={note.id} 
-                      className="p-3 rounded-md border border-border bg-card hover:bg-accent/10"
-                    >
-                      <p className="text-sm whitespace-pre-wrap">{note.content}</p>
-                      <p className="text-xs text-muted-foreground mt-2">
-                        {format(new Date(note.createdAt), 'MMM d, yyyy h:mm a')}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Time Blocks Column */}
-        <div className="w-1/3 flex flex-col">
-          <Card className="flex-1 overflow-hidden">
-            <CardHeader className="pb-2 sticky top-0 bg-card z-20 border-b">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-lg">Time Blocks</CardTitle>
-                <Button variant="ghost" size="sm" onClick={() => setIsTimeBlockDialogOpen(true)}>
-                      <Plus className="h-4 w-4" />
+            {/* Ideas Section */}
+            <Card>
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-lg">Ideas & Notes</CardTitle>
+                  <div className="flex gap-1">
+                    <Button variant="ghost" size="sm" onClick={() => setIsAddingIdea(true)}>
+                      <Lightbulb className="h-4 w-4" />
                     </Button>
-              </div>
-            </CardHeader>
-            <CardContent 
-              className="space-y-2 overflow-y-auto pr-1 custom-scrollbar" 
-              style={{ 
-                maxHeight: 'calc(100vh - 12rem)',
-                scrollbarWidth: 'thin',
-                scrollbarColor: 'rgba(155, 155, 155, 0.5) transparent'
-              }}
-            >
-              {timeBlocksForSelectedDate.length === 0 && (
-                <p className="text-sm text-muted-foreground mb-4">No time blocks for this day. Add one to get started.</p>
-              )}
-              <div className="relative pb-16">
-                {/* Time markers */}
-                <div className="absolute left-0 top-0 bottom-0 w-16 flex flex-col text-xs text-muted-foreground" style={{ height: '960px' }}>
-                  {Array.from({ length: 24 }).map((_, i) => (
-                    <div key={i} className="h-10 flex items-start pt-0.5">
-                      {i === 0 ? '12 AM' : i < 12 ? `${i} AM` : i === 12 ? '12 PM' : `${i - 12} PM`}
-                    </div>
-                  ))}
+                    <Button variant="ghost" size="sm" onClick={() => setIsAddingNote(true)}>
+                      <StickyNote className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
-                
-                {/* Time grid */}
-                <div 
-                  className="ml-16 border-l border-border relative" 
-                  style={{ height: '960px' }}
-                >
-                  {/* Clickable overlay for the entire grid */}
-                  <div 
-                    className="absolute inset-0 z-5 time-grid-overlay"
-                    onClick={(e) => {
-                      // Skip if clicking on an existing time block
-                      if ((e.target as HTMLElement).closest('.time-block-item')) {
-                        return;
-                      }
-                      
-                      // Get position relative to the grid
-                      const rect = e.currentTarget.getBoundingClientRect();
-                      const y = e.clientY - rect.top;
-                      
-                      // Convert y position to time (24 hours = 960px, so 1px = 1.5 minutes)
-                      const minutesSinceMidnight = Math.floor((y / 960) * 24 * 60);
-                      const hours = Math.floor(minutesSinceMidnight / 60);
-                      const minutes = Math.floor(minutesSinceMidnight % 60);
-                      
-                      // Round to nearest 15 minutes for better UX
-                      const roundedMinutes = Math.round(minutes / 15) * 15;
-                      const roundedHours = hours + (roundedMinutes === 60 ? 1 : 0);
-                      let finalMinutes = roundedMinutes === 60 ? 0 : roundedMinutes;
-                      
-                      // Format the time for the form
-                      const formattedHours = String(roundedHours).padStart(2, '0');
-                      const formattedMinutes = String(finalMinutes).padStart(2, '0');
-                      const startTime = `${formattedHours}:${formattedMinutes}`;
-                      
-                      // Calculate end time (1 hour later by default)
-                      let endHours = roundedHours + 1;
-                      if (endHours >= 24) {
-                        endHours = 23;
-                        finalMinutes = 59;
-                      }
-                      const formattedEndHours = String(endHours).padStart(2, '0');
-                      const endTime = `${formattedEndHours}:${formattedMinutes}`;
-                      
-                      // Set form values and open dialog
-                      setNewTimeBlockTitle('');
-                      setNewTimeBlockStartDate(format(selectedDate, 'yyyy-MM-dd'));
-                      setNewTimeBlockStartTime(startTime);
-                      setNewTimeBlockEndDate(format(selectedDate, 'yyyy-MM-dd'));
-                      setNewTimeBlockEndTime(endTime);
-                      setNewTimeBlockDescription('');
-                      setEditingTimeBlockId(null);
-                      setIsTimeBlockDialogOpen(true);
-                    }}
-                  >
-                    {/* 30-minute block grid overlay for hover effects */}
-                    {Array.from({ length: 48 }).map((_, i) => {
-                      const hour = Math.floor(i / 2);
-                      const minute = (i % 2) * 30;
-                      const timeLabel = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
-                      
-                      return (
+              </CardHeader>
+              <CardContent>
+                {todayNotes.length === 0 && olderNotes.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Ideas and notes will appear here.</p>
+                ) : (
+                  <div className="space-y-4">
+                    {/* Today's Notes */}
+                    {todayNotes.length > 0 && (
+                      <div>
+                        <h3 className="text-sm font-medium mb-2">Today</h3>
+                        <div className="space-y-3">
+                          {todayNotes.map((note) => (
+                            <div 
+                              key={note.id} 
+                              className="p-3 rounded-md border border-border bg-card hover:bg-accent/10 group"
+                            >
+                              {isEditingNote === note.id ? (
+                                <div className="space-y-2">
+                                  <Textarea
+                                    value={editedNoteContent}
+                                    onChange={(e) => setEditedNoteContent(e.target.value)}
+                                    className="min-h-[100px] text-sm"
+                                  />
+                                  <div className="flex justify-end gap-2">
+                                    <Button variant="outline" size="sm" onClick={handleCancelEditNote}>
+                                      Cancel
+                                    </Button>
+                                    <Button size="sm" onClick={handleSaveEditedNote}>
+                                      Save
+                                    </Button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <>
+                                  <p className="text-sm whitespace-pre-wrap">{note.content}</p>
+                                  <div className="flex justify-between items-center mt-2">
+                                    <p className="text-xs text-muted-foreground">
+                                      {format(new Date(note.createdAt), 'h:mm a')}
+                                    </p>
+                                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                      <Button 
+                                        variant="ghost" 
+                                        size="icon" 
+                                        className="h-6 w-6" 
+                                        onClick={() => handleEditNote(note.id)}
+                                      >
+                                        <Edit className="h-3 w-3" />
+                                      </Button>
+                                      <Button 
+                                        variant="ghost" 
+                                        size="icon" 
+                                        className="h-6 w-6" 
+                                        onClick={() => deleteNote(note.id)}
+                                      >
+                                        <Trash2 className="h-3 w-3" />
+                                      </Button>
+                                    </div>
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Older Notes */}
+                    {olderNotes.length > 0 && (
+                      <div>
                         <div 
-                          key={`block-${i}`} 
-                          className="absolute left-0 right-0 time-block-hover-target"
-                          style={{ 
-                            top: `${(i * 20)}px`, 
-                            height: '20px',
-                          }}
-                          title={`Click to create event at ${hour % 12 || 12}:${minute.toString().padStart(2, '0')} ${hour < 12 ? 'AM' : 'PM'}`}
-                        ></div>
-                      );
-                    })}
+                          className="flex items-center gap-2 cursor-pointer mb-2"
+                          onClick={() => setIsOlderNotesCollapsed(!isOlderNotesCollapsed)}
+                        >
+                          <h3 className="text-sm font-medium">Previous Notes</h3>
+                          <Button variant="ghost" size="icon" className="h-5 w-5 p-0">
+                            {isOlderNotesCollapsed ? (
+                              <ChevronRight className="h-4 w-4" />
+                            ) : (
+                              <ChevronDown className="h-4 w-4" />
+                            )}
+                          </Button>
+                          <span className="text-xs text-muted-foreground">({olderNotes.length})</span>
+                        </div>
+                        
+                        {!isOlderNotesCollapsed && (
+                          <div className="space-y-3">
+                            {olderNotes.map((note) => (
+                              <div 
+                                key={note.id} 
+                                className="p-3 rounded-md border border-border bg-card hover:bg-accent/10 group"
+                              >
+                                {isEditingNote === note.id ? (
+                                  <div className="space-y-2">
+                                    <Textarea
+                                      value={editedNoteContent}
+                                      onChange={(e) => setEditedNoteContent(e.target.value)}
+                                      className="min-h-[100px] text-sm"
+                                    />
+                                    <div className="flex justify-end gap-2">
+                                      <Button variant="outline" size="sm" onClick={handleCancelEditNote}>
+                                        Cancel
+                                      </Button>
+                                      <Button size="sm" onClick={handleSaveEditedNote}>
+                                        Save
+                                      </Button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <>
+                                    <p className="text-sm whitespace-pre-wrap">{note.content}</p>
+                                    <div className="flex justify-between items-center mt-2">
+                                      <p className="text-xs text-muted-foreground">
+                                        {format(new Date(note.createdAt), 'MMM d, yyyy')}
+                                      </p>
+                                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <Button 
+                                          variant="ghost" 
+                                          size="icon" 
+                                          className="h-6 w-6" 
+                                          onClick={() => handleEditNote(note.id)}
+                                        >
+                                          <Edit className="h-3 w-3" />
+                                        </Button>
+                                        <Button 
+                                          variant="ghost" 
+                                          size="icon" 
+                                          className="h-6 w-6" 
+                                          onClick={() => deleteNote(note.id)}
+                                        >
+                                          <Trash2 className="h-3 w-3" />
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  </>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Time Blocks Column */}
+          <div className="w-1/3 flex flex-col">
+            <Card className="flex-1 overflow-hidden">
+              <CardHeader className="pb-2 sticky top-0 bg-card z-20 border-b">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-lg">Time Blocks</CardTitle>
+                  <Button variant="ghost" size="sm" onClick={() => setIsTimeBlockDialogOpen(true)}>
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                </div>
+              </CardHeader>
+              <CardContent 
+                className="space-y-2 overflow-y-auto pr-1 custom-scrollbar" 
+                style={{ 
+                  maxHeight: 'calc(100vh - 12rem)',
+                  scrollbarWidth: 'thin',
+                  scrollbarColor: 'rgba(155, 155, 155, 0.5) transparent'
+                }}
+              >
+                {timeBlocksForSelectedDate.length === 0 && (
+                  <p className="text-sm text-muted-foreground mb-4">No time blocks for this day. Add one to get started.</p>
+                )}
+                <div className="relative pb-16">
+                  {/* Time markers */}
+                  <div className="absolute left-0 top-0 bottom-0 w-16 flex flex-col text-xs text-muted-foreground" style={{ height: '960px' }}>
+                    {Array.from({ length: 24 }).map((_, i) => (
+                      <div key={i} className="h-10 flex items-start pt-0.5">
+                        {i === 0 ? '12 AM' : i < 12 ? `${i} AM` : i === 12 ? '12 PM' : `${i - 12} PM`}
+                      </div>
+                    ))}
                   </div>
                   
-                  {/* Hour and half-hour grid lines */}
-                  {Array.from({ length: 24 }).map((_, i) => (
-                    <div key={i} className="h-10 border-b border-border time-grid-hour">
-                      {/* Half-hour marker */}
-                      <div className="h-[50%] border-b border-border border-dashed opacity-50 time-grid-half-hour"></div>
-                    </div>
-                  ))}
-                  
-                  {/* Current time indicator */}
-                  {isSameDay(selectedDate, new Date()) && (
+                  {/* Time grid */}
+                  <div 
+                    className="ml-16 border-l border-border relative" 
+                    style={{ height: '960px' }}
+                  >
+                    {/* Clickable overlay for the entire grid */}
                     <div 
-                      className="absolute left-0 right-0 border-t-2 border-red-500 z-20"
-                      style={{ 
-                        top: `${(new Date().getHours() * 60 + new Date().getMinutes()) / (24 * 60) * 960}px`,
+                      className="absolute inset-0 z-5 time-grid-overlay"
+                      onClick={(e) => {
+                        // Skip if clicking on an existing time block
+                        if ((e.target as HTMLElement).closest('.time-block-item')) {
+                          return;
+                        }
+                        
+                        // Get position relative to the grid
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const y = e.clientY - rect.top;
+                        
+                        // Convert y position to time (24 hours = 960px, so 1px = 1.5 minutes)
+                        const minutesSinceMidnight = Math.floor((y / 960) * 24 * 60);
+                        const hours = Math.floor(minutesSinceMidnight / 60);
+                        const minutes = Math.floor(minutesSinceMidnight % 60);
+                        
+                        // Round to nearest 15 minutes for better UX
+                        const roundedMinutes = Math.round(minutes / 15) * 15;
+                        const roundedHours = hours + (roundedMinutes === 60 ? 1 : 0);
+                        let finalMinutes = roundedMinutes === 60 ? 0 : roundedMinutes;
+                        
+                        // Format the time for the form
+                        const formattedHours = String(roundedHours).padStart(2, '0');
+                        const formattedMinutes = String(finalMinutes).padStart(2, '0');
+                        const startTime = `${formattedHours}:${formattedMinutes}`;
+                        
+                        // Calculate end time (1 hour later by default)
+                        let endHours = roundedHours + 1;
+                        if (endHours >= 24) {
+                          endHours = 23;
+                          finalMinutes = 59;
+                        }
+                        const formattedEndHours = String(endHours).padStart(2, '0');
+                        const endTime = `${formattedEndHours}:${formattedMinutes}`;
+                        
+                        // Set form values and open dialog
+                        setNewTimeBlockTitle('');
+                        setNewTimeBlockStartDate(format(selectedDate, 'yyyy-MM-dd'));
+                        setNewTimeBlockStartTime(startTime);
+                        setNewTimeBlockEndDate(format(selectedDate, 'yyyy-MM-dd'));
+                        setNewTimeBlockEndTime(endTime);
+                        setNewTimeBlockDescription('');
+                        setEditingTimeBlockId(null);
+                        setIsTimeBlockDialogOpen(true);
                       }}
                     >
-                      <div className="absolute -left-3 -top-1.5 w-3 h-3 rounded-full bg-red-500"></div>
-                    </div>
-                  )}
-                  
-                  {/* Time blocks */}
-                  <div className="absolute left-0 right-0 top-0 pb-16" style={{ height: '960px' }}>
-                    {(() => {
-                      // Process time blocks to handle overlaps
-                      const processedBlocks = [...timeBlocksForSelectedDate].map(timeBlock => {
-                        const startTime = new Date(timeBlock.startTime);
-                        const endTime = new Date(timeBlock.endTime);
-                        const startHour = startTime.getHours();
-                        const startMinute = startTime.getMinutes();
-                        const endHour = endTime.getHours();
-                        const endMinute = endTime.getMinutes();
-                        
-                        // Calculate position and height for 24-hour view
-                        // Convert time to minutes since midnight
-                        const startMinutesSinceMidnight = startHour * 60 + startMinute;
-                        const endMinutesSinceMidnight = endHour * 60 + endMinute;
-                        
-                        // Convert to pixels (960px height / 24 hours = 40px per hour = 0.67px per minute)
-                        const pixelStartPosition = Math.round((startMinutesSinceMidnight / (24 * 60)) * 960);
-                        const pixelEndPosition = Math.round((endMinutesSinceMidnight / (24 * 60)) * 960);
-                        const height = pixelEndPosition - pixelStartPosition;
-                        
-                        // Generate a random pastel color based on the time block title
-                        const hash = timeBlock.title.split('').reduce((acc, char) => char.charCodeAt(0) + acc, 0);
-                        const hue = hash % 360;
-                        const borderColor = `hsl(${hue}, 70%, 60%)`;
-                        const bgColor = `hsl(${hue}, 70%, 95%)`;
-                        
-                        // Determine if this time block is happening now
-                        const now = new Date();
-                        const isHappeningNow = now >= startTime && now <= endTime && isSameDay(selectedDate, now);
-                        
-                        return {
-                          ...timeBlock,
-                          startTime,
-                          endTime,
-                          startMinutesSinceMidnight,
-                          endMinutesSinceMidnight,
-                          pixelStartPosition,
-                          pixelEndPosition,
-                          height,
-                          borderColor,
-                          bgColor,
-                          isHappeningNow,
-                          column: 0 // Default column (will be assigned during collision detection)
-                        };
-                      });
-                      
-                      // Sort blocks by start time for proper collision detection
-                      processedBlocks.sort((a, b) => {
-                        // First sort by start time
-                        if (a.startMinutesSinceMidnight !== b.startMinutesSinceMidnight) {
-                          return a.startMinutesSinceMidnight - b.startMinutesSinceMidnight;
-                        }
-                        // If start times are the same, sort by duration (longer blocks first)
-                        return (b.endMinutesSinceMidnight - b.startMinutesSinceMidnight) - 
-                               (a.endMinutesSinceMidnight - a.startMinutesSinceMidnight);
-                      });
-                      
-                      // Improved column assignment algorithm
-                      // Create an array to track the end time of the last block in each column
-                      const columnEndTimes: number[] = [];
-                      
-                      // Assign columns to each block
-                      processedBlocks.forEach(block => {
-                        // Find the first column where this block doesn't overlap
-                        let columnIndex = 0;
-                        let foundColumn = false;
-                        
-                        while (!foundColumn) {
-                          // If we don't have this column yet or the column is free at this time
-                          // (meaning the last block in this column ends before or exactly when this block starts)
-                          if (columnEndTimes[columnIndex] === undefined || 
-                              columnEndTimes[columnIndex] <= block.startMinutesSinceMidnight) {
-                            // Assign this column to the block
-                            block.column = columnIndex;
-                            // Update the end time for this column
-                            columnEndTimes[columnIndex] = block.endMinutesSinceMidnight;
-                            foundColumn = true;
-                          } else {
-                            // Try the next column
-                            columnIndex++;
-                          }
-                        }
-                      });
-                      
-                      // Calculate the maximum number of columns needed
-                      const maxColumn = processedBlocks.length > 0 
-                        ? Math.max(...processedBlocks.map(b => b.column)) 
-                        : 0;
-                      
-                      // Render the processed blocks
-                      return processedBlocks.map((block) => {
-                        // Calculate column width based on the maximum number of columns
-                        const columnCount = maxColumn + 1; // Add 1 because columns are 0-indexed
-                        const actualColumnWidth = columnCount > 1 ? 100 / columnCount : 100;
+                      {/* 30-minute block grid overlay for hover effects */}
+                      {Array.from({ length: 48 }).map((_, i) => {
+                        const hour = Math.floor(i / 2);
+                        const minute = (i % 2) * 30;
+                        const timeLabel = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
                         
                         return (
                           <div 
-                            key={block.id} 
-                            className={`absolute px-2 py-1 rounded-md border border-border hover:brightness-95 cursor-pointer overflow-hidden time-block-item ${block.isHappeningNow ? 'ring-2 ring-primary ring-offset-1' : ''}`}
+                            key={`block-${i}`} 
+                            className="absolute left-0 right-0 time-block-hover-target"
                             style={{ 
-                              top: `${block.pixelStartPosition}px`, 
-                              height: `${Math.max(block.height, 32)}px`,
-                              minHeight: '32px',
-                              backgroundColor: block.bgColor,
-                              borderLeft: `4px solid ${block.borderColor}`,
-                              zIndex: 10,
-                              left: `${block.column * actualColumnWidth}%`,
-                              width: `${actualColumnWidth}%`
+                              top: `${(i * 20)}px`, 
+                              height: '20px',
                             }}
-                            onClick={(e) => {
-                              e.stopPropagation(); // Prevent triggering the grid click
-                              handleEditTimeBlock(block.id);
-                            }}
-                          >
-                            <div className="font-medium text-sm truncate">{block.title}</div>
-                            <div className="text-xs opacity-70">
-                              {format(block.startTime, 'h:mm a')} - {format(block.endTime, 'h:mm a')}
-                            </div>
-                            {block.description && block.height > 60 && (
-                              <div className="text-xs mt-1 line-clamp-2 opacity-70">{block.description}</div>
-                            )}
-                          </div>
+                            title={`Click to create event at ${hour % 12 || 12}:${minute.toString().padStart(2, '0')} ${hour < 12 ? 'AM' : 'PM'}`}
+                          ></div>
                         );
-                      });
-                    })()}
+                      })}
+                    </div>
+                    
+                    {/* Hour and half-hour grid lines */}
+                    {Array.from({ length: 24 }).map((_, i) => (
+                      <div key={i} className="h-10 border-b border-border time-grid-hour">
+                        {/* Half-hour marker */}
+                        <div className="h-[50%] border-b border-border border-dashed opacity-50 time-grid-half-hour"></div>
+                      </div>
+                    ))}
+                    
+                    {/* Current time indicator */}
+                    {isSameDay(selectedDate, new Date()) && (
+                      <div 
+                        className="absolute left-0 right-0 border-t-2 border-red-500 z-20"
+                        style={{ 
+                          top: `${(new Date().getHours() * 60 + new Date().getMinutes()) / (24 * 60) * 960}px`,
+                        }}
+                      >
+                        <div className="absolute -left-3 -top-1.5 w-3 h-3 rounded-full bg-red-500"></div>
+                      </div>
+                    )}
+                    
+                    {/* Time blocks */}
+                    <div className="absolute left-0 right-0 top-0 pb-16" style={{ height: '960px' }}>
+                      {(() => {
+                        // Process time blocks to handle overlaps
+                        const processedBlocks = [...timeBlocksForSelectedDate].map(timeBlock => {
+                          const startTime = new Date(timeBlock.startTime);
+                          const endTime = new Date(timeBlock.endTime);
+                          const startHour = startTime.getHours();
+                          const startMinute = startTime.getMinutes();
+                          const endHour = endTime.getHours();
+                          const endMinute = endTime.getMinutes();
+                          
+                          // Calculate position and height for 24-hour view
+                          // Convert time to minutes since midnight
+                          const startMinutesSinceMidnight = startHour * 60 + startMinute;
+                          const endMinutesSinceMidnight = endHour * 60 + endMinute;
+                          
+                          // Convert to pixels (960px height / 24 hours = 40px per hour = 0.67px per minute)
+                          const pixelStartPosition = Math.round((startMinutesSinceMidnight / (24 * 60)) * 960);
+                          const pixelEndPosition = Math.round((endMinutesSinceMidnight / (24 * 60)) * 960);
+                          const height = pixelEndPosition - pixelStartPosition;
+                          
+                          // Generate a random pastel color based on the time block title
+                          const hash = timeBlock.title.split('').reduce((acc, char) => char.charCodeAt(0) + acc, 0);
+                          const hue = hash % 360;
+                          const borderColor = `hsl(${hue}, 70%, 60%)`;
+                          const bgColor = `hsl(${hue}, 70%, 95%)`;
+                          
+                          // Determine if this time block is happening now
+                          const now = new Date();
+                          const isHappeningNow = now >= startTime && now <= endTime && isSameDay(selectedDate, now);
+                          
+                          return {
+                            ...timeBlock,
+                            startTime,
+                            endTime,
+                            startMinutesSinceMidnight,
+                            endMinutesSinceMidnight,
+                            pixelStartPosition,
+                            pixelEndPosition,
+                            height,
+                            borderColor,
+                            bgColor,
+                            isHappeningNow,
+                            column: 0 // Default column (will be assigned during collision detection)
+                          };
+                        });
+                        
+                        // Sort blocks by start time for proper collision detection
+                        processedBlocks.sort((a, b) => {
+                          // First sort by start time
+                          if (a.startMinutesSinceMidnight !== b.startMinutesSinceMidnight) {
+                            return a.startMinutesSinceMidnight - b.startMinutesSinceMidnight;
+                          }
+                          // If start times are the same, sort by duration (longer blocks first)
+                          return (b.endMinutesSinceMidnight - b.startMinutesSinceMidnight) - 
+                                 (a.endMinutesSinceMidnight - a.startMinutesSinceMidnight);
+                        });
+                        
+                        // Improved column assignment algorithm
+                        // Create an array to track the end time of the last block in each column
+                        const columnEndTimes: number[] = [];
+                        
+                        // Assign columns to each block
+                        processedBlocks.forEach(block => {
+                          // Find the first column where this block doesn't overlap
+                          let columnIndex = 0;
+                          let foundColumn = false;
+                          
+                          while (!foundColumn) {
+                            // If we don't have this column yet or the column is free at this time
+                            // (meaning the last block in this column ends before or exactly when this block starts)
+                            if (columnEndTimes[columnIndex] === undefined || 
+                                columnEndTimes[columnIndex] <= block.startMinutesSinceMidnight) {
+                              // Assign this column to the block
+                              block.column = columnIndex;
+                              // Update the end time for this column
+                              columnEndTimes[columnIndex] = block.endMinutesSinceMidnight;
+                              foundColumn = true;
+                            } else {
+                              // Try the next column
+                              columnIndex++;
+                            }
+                          }
+                        });
+                        
+                        // Calculate the maximum number of columns needed
+                        const maxColumn = processedBlocks.length > 0 
+                          ? Math.max(...processedBlocks.map(b => b.column)) 
+                          : 0;
+                        
+                        // Render the processed blocks
+                        return processedBlocks.map((block) => {
+                          // Calculate column width based on the maximum number of columns
+                          const columnCount = maxColumn + 1; // Add 1 because columns are 0-indexed
+                          const actualColumnWidth = columnCount > 1 ? 100 / columnCount : 100;
+                          
+                          return (
+                            <div 
+                              key={block.id} 
+                              className={`absolute px-2 py-1 rounded-md border border-border hover:brightness-95 cursor-pointer overflow-hidden time-block-item ${block.isHappeningNow ? 'ring-2 ring-primary ring-offset-1' : ''}`}
+                              style={{ 
+                                top: `${block.pixelStartPosition}px`, 
+                                height: `${Math.max(block.height, 32)}px`,
+                                minHeight: '32px',
+                                backgroundColor: block.bgColor,
+                                borderLeft: `4px solid ${block.borderColor}`,
+                                zIndex: 10,
+                                left: `${block.column * actualColumnWidth}%`,
+                                width: `${actualColumnWidth}%`
+                              }}
+                              onClick={(e) => {
+                                e.stopPropagation(); // Prevent triggering the grid click
+                                handleEditTimeBlock(block.id);
+                              }}
+                            >
+                              <div className="font-medium text-sm truncate">{block.title}</div>
+                              <div className="text-xs opacity-70">
+                                {format(block.startTime, 'h:mm a')} - {format(block.endTime, 'h:mm a')}
+                              </div>
+                              {block.description && block.height > 60 && (
+                                <div className="text-xs mt-1 line-clamp-2 opacity-70">{block.description}</div>
+                              )}
+                            </div>
+                          );
+                        });
+                      })()}
+                    </div>
                   </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </div>
 
