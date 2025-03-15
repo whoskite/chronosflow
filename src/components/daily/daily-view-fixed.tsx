@@ -458,6 +458,25 @@ export function DailyView() {
     setEditedNoteContent('');
   };
 
+  // Add functions to handle task editing
+  const handleEditTask = (id: string) => {
+    setEditingTaskId(id);
+    setEditedTaskTitle(tasks[id].title);
+  };
+  
+  const handleSaveEditedTask = () => {
+    if (editingTaskId && editedTaskTitle.trim()) {
+      updateTask(editingTaskId, { title: editedTaskTitle.trim() });
+      setEditingTaskId(null);
+      setEditedTaskTitle('');
+    }
+  };
+  
+  const handleCancelEditTask = () => {
+    setEditingTaskId(null);
+    setEditedTaskTitle('');
+  };
+
   return (
     <div className="flex flex-col h-full">
       {/* Fixed Header with Logo */}
@@ -569,38 +588,81 @@ export function DailyView() {
                                 }
                               }}
                             />
-                            <label 
-                              htmlFor={`task-${task.id}`}
-                              className="text-sm flex-1"
-                            >
-                              {task.title}
-                            </label>
-                            <Button 
-                              variant="ghost" 
-                              size="icon"
-                              className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
-                              onClick={() => {
-                                // Add delete animation
-                                const taskElement = document.getElementById(`task-${task.id}`);
-                                if (taskElement && taskElement.parentElement) {
-                                  taskElement.parentElement.classList.add('task-delete-animation');
-                                  // Wait for animation to complete before removing
-                                  setTimeout(() => {
-                                    // Remove the task
-                                    const updatedTasks = { ...tasks };
-                                    delete updatedTasks[task.id];
-                                    useStore.setState({ tasks: updatedTasks });
-                                  }, 300);
-                                } else {
-                                  // Remove immediately if animation fails
-                                  const updatedTasks = { ...tasks };
-                                  delete updatedTasks[task.id];
-                                  useStore.setState({ tasks: updatedTasks });
-                                }
-                              }}
-                            >
-                              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-trash-2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
-                            </Button>
+                            {editingTaskId === task.id ? (
+                              <div className="flex-1 flex items-center gap-2">
+                                <input
+                                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                  value={editedTaskTitle}
+                                  onChange={(e) => setEditedTaskTitle(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      handleSaveEditedTask();
+                                    } else if (e.key === 'Escape') {
+                                      handleCancelEditTask();
+                                    }
+                                  }}
+                                  autoFocus
+                                />
+                                <div className="flex gap-1">
+                                  <Button 
+                                    variant="ghost" 
+                                    size="icon"
+                                    className="h-7 w-7"
+                                    onClick={handleSaveEditedTask}
+                                  >
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-check"><polyline points="20 6 9 17 4 12"/></svg>
+                                  </Button>
+                                  <Button 
+                                    variant="ghost" 
+                                    size="icon"
+                                    className="h-7 w-7"
+                                    onClick={handleCancelEditTask}
+                                  >
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-x"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                                  </Button>
+                                </div>
+                              </div>
+                            ) : (
+                              <>
+                                <label 
+                                  htmlFor={`task-${task.id}`}
+                                  className="text-sm flex-1 cursor-pointer"
+                                  onClick={(e) => {
+                                    // Prevent triggering checkbox when clicking on label
+                                    e.preventDefault();
+                                    handleEditTask(task.id);
+                                  }}
+                                >
+                                  {task.title}
+                                </label>
+                                <Button 
+                                  variant="ghost" 
+                                  size="icon"
+                                  className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  onClick={() => {
+                                    // Add delete animation
+                                    const taskElement = document.getElementById(`task-${task.id}`);
+                                    if (taskElement && taskElement.parentElement) {
+                                      taskElement.parentElement.classList.add('task-delete-animation');
+                                      // Wait for animation to complete before removing
+                                      setTimeout(() => {
+                                        // Remove the task
+                                        const updatedTasks = { ...tasks };
+                                        delete updatedTasks[task.id];
+                                        useStore.setState({ tasks: updatedTasks });
+                                      }, 300);
+                                    } else {
+                                      // Remove immediately if animation fails
+                                      const updatedTasks = { ...tasks };
+                                      delete updatedTasks[task.id];
+                                      useStore.setState({ tasks: updatedTasks });
+                                    }
+                                  }}
+                                >
+                                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-trash-2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
+                                </Button>
+                              </>
+                            )}
                           </div>
                         ))}
                     </div>
@@ -653,38 +715,81 @@ export function DailyView() {
                                     }
                                   }}
                                 />
-                                <label 
-                                  htmlFor={`task-${task.id}`}
-                                  className="text-sm flex-1 line-through text-muted-foreground"
-                                >
-                                  {task.title}
-                                </label>
-                                <Button 
-                                  variant="ghost" 
-                                  size="icon"
-                                  className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
-                                  onClick={() => {
-                                    // Add delete animation
-                                    const taskElement = document.getElementById(`task-${task.id}`);
-                                    if (taskElement && taskElement.parentElement) {
-                                      taskElement.parentElement.classList.add('task-delete-animation');
-                                      // Wait for animation to complete before removing
-                                      setTimeout(() => {
-                                        // Remove the task
-                                        const updatedTasks = { ...tasks };
-                                        delete updatedTasks[task.id];
-                                        useStore.setState({ tasks: updatedTasks });
-                                      }, 300);
-                                    } else {
-                                      // Remove immediately if animation fails
-                                      const updatedTasks = { ...tasks };
-                                      delete updatedTasks[task.id];
-                                      useStore.setState({ tasks: updatedTasks });
-                                    }
-                                  }}
-                                >
-                                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-trash-2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
-                                </Button>
+                                {editingTaskId === task.id ? (
+                                  <div className="flex-1 flex items-center gap-2">
+                                    <input
+                                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                      value={editedTaskTitle}
+                                      onChange={(e) => setEditedTaskTitle(e.target.value)}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                          handleSaveEditedTask();
+                                        } else if (e.key === 'Escape') {
+                                          handleCancelEditTask();
+                                        }
+                                      }}
+                                      autoFocus
+                                    />
+                                    <div className="flex gap-1">
+                                      <Button 
+                                        variant="ghost" 
+                                        size="icon"
+                                        className="h-7 w-7"
+                                        onClick={handleSaveEditedTask}
+                                      >
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-check"><polyline points="20 6 9 17 4 12"/></svg>
+                                      </Button>
+                                      <Button 
+                                        variant="ghost" 
+                                        size="icon"
+                                        className="h-7 w-7"
+                                        onClick={handleCancelEditTask}
+                                      >
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-x"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                                      </Button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <>
+                                    <label 
+                                      htmlFor={`task-${task.id}`}
+                                      className="text-sm flex-1 line-through text-muted-foreground cursor-pointer"
+                                      onClick={(e) => {
+                                        // Prevent triggering checkbox when clicking on label
+                                        e.preventDefault();
+                                        handleEditTask(task.id);
+                                      }}
+                                    >
+                                      {task.title}
+                                    </label>
+                                    <Button 
+                                      variant="ghost" 
+                                      size="icon"
+                                      className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                                      onClick={() => {
+                                        // Add delete animation
+                                        const taskElement = document.getElementById(`task-${task.id}`);
+                                        if (taskElement && taskElement.parentElement) {
+                                          taskElement.parentElement.classList.add('task-delete-animation');
+                                          // Wait for animation to complete before removing
+                                          setTimeout(() => {
+                                            // Remove the task
+                                            const updatedTasks = { ...tasks };
+                                            delete updatedTasks[task.id];
+                                            useStore.setState({ tasks: updatedTasks });
+                                          }, 300);
+                                        } else {
+                                          // Remove immediately if animation fails
+                                          const updatedTasks = { ...tasks };
+                                          delete updatedTasks[task.id];
+                                          useStore.setState({ tasks: updatedTasks });
+                                        }
+                                      }}
+                                    >
+                                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-trash-2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
+                                    </Button>
+                                  </>
+                                )}
                               </div>
                             ))}
                         </div>
